@@ -1,15 +1,14 @@
 // permissions
-const { request: permRequest } = Deno.permissions;
-const runPerm = await permRequest({ name: "run" })
-if (runPerm.state !== 'granted') {
-  console.log(`'run' permission denied`)
-  Deno.exit(1)
-} 
-const readPerm = await permRequest({ name: "read" })
-if (readPerm.state !== 'granted') {
-  console.log(`'read' permission denied`)
-  Deno.exit(1)
-} 
+async function requestPermission(name: Deno.PermissionName) {
+  const { state } = await Deno.permissions.request({ name })
+  if (state !== 'granted') {
+    console.log(`'${name}' permission denied`)
+    Deno.exit(1)
+  } 
+}
+
+await requestPermission('run')
+await requestPermission('read')
 
 console.log(Deno.args)
 const gitRepo = Deno.args[0] || '../deno'
@@ -21,7 +20,8 @@ const p = Deno.run({
   stdout: 'piped',
 })
 
-const cmd = 'git log --reverse | head -n5'
+// --pretty=format:"%h | %cd %an", what is the message formatter?
+const cmd = 'git log --reverse --pretty=oneline | head -n5'
 await p.stdin.write(new TextEncoder().encode(cmd))
 await p.stdin.close()
 const out = await p.output()
