@@ -11,7 +11,8 @@ if (readPerm.state !== 'granted') {
   Deno.exit(1)
 } 
 
-const gitRepo = '../deno'
+console.log(Deno.args)
+const gitRepo = Deno.args[0] || '../deno'
 
 Deno.chdir(gitRepo)
 const p = Deno.run({ 
