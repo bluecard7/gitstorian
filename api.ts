@@ -10,23 +10,18 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 interface State {
-  // maybe keep as Uint8Array til string required?
-  bookmark: string;
+  pos: number;
   cache: string[];
 }
 const state: State = {
-  // Just use position in cache instead to get current commit?
-  bookmark: "",
+  pos: 0,
   cache: [],
 };
 
-async function updateHashes(state: State, commit?: string) {
-  const from = commit ? `${commit}..` : "HEAD";
+async function updateHashes(state: State) {
+  const from = curr(state) ? `${curr(state)}..` : "HEAD";
   const gitCmd = `git rev-list --reverse ${from} | head -n5`;
-  state.cache = (await run(gitCmd))
-    .split("\n")
-    .filter(Boolean);
-  state.bookmark = state.cache.shift() || "";
+  state.cache = (await run(gitCmd)).split("\n").filter(Boolean);
   // console.log("[STATE]:", state)
 }
 
@@ -34,18 +29,23 @@ async function loadCommit(state: State) {
   if (await exists(STABLE_STORE)) {
     const blob = decoder.decode(Deno.readFileSync(STABLE_STORE));
     state.cache = blob.split("\n").filter(Boolean);
-    state.bookmark = state.cache.shift() || "";
+    // what about case where there's nothing in the file?
     return;
   }
   await updateHashes(state);
 }
 
+function curr({ pos, cache }: State): string {
+  return pos < cache.length ? cache[pos] : "";
+}
+
 async function next(state: State) {
-  if (state.cache.length) {
-    state.bookmark = state.cache.shift() || "";
+  const { pos, cache } = state;
+  if (pos < cache.length) {
+    state.pos += 1;
     return;
   }
-  await updateHashes(state, state.bookmark);
+  await updateHashes(state);
 }
 
 async function run(gitCmd: string): Promise<string> {
@@ -82,10 +82,9 @@ async function buildGitCmd(opts: Options, state: State): Promise<string> {
   if (cmd[0] === "v") {
     // do nothing, just show current commit
   }
-  const { bookmark } = state;
   const defaults = `--oneline ${filename ? "" : "--stat"}`;
   const fileOpt = filename ? `-- ${filename}` : "";
-  return `git ${gitCmd} ${defaults} ${bookmark} ${fileOpt}`;
+  return `git ${gitCmd} ${defaults} ${curr(state)} ${fileOpt}`;
 }
 
 export async function setup(repoPath: string) {
@@ -100,8 +99,8 @@ export async function request(line: string): Promise<string> {
 }
 
 export function persist() {
-  console.log("[PERSISTING]", state);
-  const { bookmark, cache } = state;
-  const data = [bookmark, ...cache].join("\n");
+  const { pos, cache } = state;
+  const data = cache.slice(pos).join("\n");
+  console.log(`[PERSISTING]\n${data}`);
   Deno.writeFileSync(STABLE_STORE, encoder.encode(data), { create: true });
 }
