@@ -1,3 +1,8 @@
+import { exists } from "https://deno.land/std/fs/mod.ts";
+
+// file to persist session
+const STABLE_STORE = ".gitstorian";
+
 // TODO: gitstorian command for viewing diffs
 // just copy to Deno.stdout? Does less work in that case?
 
@@ -5,10 +10,12 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 interface State {
+  // maybe keep as Uint8Array til string required?
   bookmark: string;
   cache: string[];
 }
 const state: State = {
+  // Just use position in cache instead to get current commit?
   bookmark: "",
   cache: [],
 };
@@ -16,16 +23,20 @@ const state: State = {
 async function updateHashes(state: State, commit?: string) {
   const from = commit ? `${commit}..` : "HEAD";
   const gitCmd = `git rev-list --reverse ${from} | head -n5`;
-  const hashes = (await run(gitCmd))
+  state.cache = (await run(gitCmd))
     .split("\n")
     .filter(Boolean);
-  state.bookmark = hashes.shift() || "";
-  state.cache = hashes;
+  state.bookmark = state.cache.shift() || "";
   // console.log("[STATE]:", state)
 }
 
 async function loadCommit(state: State) {
-  // TODO: check if persisted state exists first + load that
+  if (await exists(STABLE_STORE)) {
+    const blob = decoder.decode(Deno.readFileSync(STABLE_STORE));
+    state.cache = blob.split("\n").filter(Boolean);
+    state.bookmark = state.cache.shift() || "";
+    return;
+  }
   await updateHashes(state);
 }
 
@@ -71,9 +82,9 @@ async function buildGitCmd(opts: Options, state: State): Promise<string> {
   if (cmd[0] === "v") {
     // do nothing, just show current commit
   }
-  const defaults = "--stat --oneline";
-  const fileOpt = filename ? `-- ${filename}` : "";
   const { bookmark } = state;
+  const defaults = `--oneline ${filename ? "" : "--stat"}`;
+  const fileOpt = filename ? `-- ${filename}` : "";
   return `git ${gitCmd} ${defaults} ${bookmark} ${fileOpt}`;
 }
 
@@ -88,6 +99,9 @@ export async function request(line: string): Promise<string> {
   return run(gitCmd);
 }
 
-// TODO
-function persist() {
+export function persist() {
+  console.log("[PERSISTING]", state);
+  const { bookmark, cache } = state;
+  const data = [bookmark, ...cache].join("\n");
+  Deno.writeFileSync(STABLE_STORE, encoder.encode(data), { create: true });
 }

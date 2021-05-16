@@ -1,8 +1,9 @@
 import { requestPermission } from "./permission.ts";
-import { request, setup } from "./api.ts";
+import { request, setup, persist } from "./api.ts";
 
 await requestPermission("run");
 await requestPermission("read");
+await requestPermission("write");
 const repoPath = Deno.args[0] || Deno.cwd();
 
 async function main() {
@@ -19,10 +20,12 @@ async function main() {
     const line = decoder.decode(cmdBuf.subarray(0, n)).trim();
     if (line === "q") {
       console.log("Exiting...");
-      return;
+      break;
     }
     res = await request(line);
     console.log(res);
   }
+  persist();
 }
-await main();
+
+main();
