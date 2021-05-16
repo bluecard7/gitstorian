@@ -1,28 +1,28 @@
-import { GitAPI } from './api.ts'
-import { requestPermission } from './permission.ts'
+import { requestPermission } from "./permission.ts";
+import { request, setup } from "./api.ts";
 
-await requestPermission('run')
-await requestPermission('read')
-const repoPath = Deno.args[0] || Deno.cwd()
+await requestPermission("run");
+await requestPermission("read");
+const repoPath = Deno.args[0] || Deno.cwd();
 
-const cmdBuf = new Uint8Array(256);
 async function main() {
+  await setup(repoPath);
+  const cmdBuf = new Uint8Array(128);
+  const decoder = new TextDecoder();
+
+  // show current commit on start
+  let res = await request("v");
+  console.log(res);
+
   while (true) {
-    const n = (await Deno.read(0, cmdBuf)) || 0
-    const decoder = new TextDecoder()
-    const line = decoder.decode(cmdBuf.subarray(0, n)).trim()
-    if (line === 'quit') {
-      console.log('Exiting...')
-      return
+    const n = (await Deno.read(0, cmdBuf)) || 0;
+    const line = decoder.decode(cmdBuf.subarray(0, n)).trim();
+    if (line === "q") {
+      console.log("Exiting...");
+      return;
     }
-    const res = await GitAPI.request({mode: '', filename: ''})
-    console.log(res)
-    // bookmark flow
-    // walk through the commits!
-    // showing edited files per commit relative to adjacent commits
+    res = await request(line);
+    console.log(res);
   }
 }
-const { init, persist } = GitAPI
-init(repoPath)
-await main()
-persist()
+await main();
