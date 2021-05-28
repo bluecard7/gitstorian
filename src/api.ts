@@ -1,7 +1,8 @@
-import { exists } from "https://deno.land/std/fs/mod.ts";
+// todo: see if mem of compiled binary is majorly affected by this import
+// existsSync is ppretty simple to implement
+import { existsSync } from "https://deno.land/std/fs/mod.ts";
+import { execCtx } from "./ctx.ts";
 
-// file to persist session
-const STABLE_STORE = ".ripthebuild";
 
 // TODO: gitstorian command for viewing diffs
 // just copy to Deno.stdout? Does less work in that case?
@@ -9,58 +10,77 @@ const STABLE_STORE = ".ripthebuild";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-interface State {
+class GitCommandFormatter {
+  hashes(fromCommit: string): string {
+    const from = fromCommit ? `${fromCommit}..` : "HEAD";
+    return `git rev-list --reverse ${from} | head -n5`;
+  }
+
+  // instead having this process the filename, do that cache?
+  diff(commit: string, filename: string): string {
+    let gitCmd = "show";
+    const defaults = `--oneline ${filename ? "" : "--stat"}`;
+    const fileOpt = filename ? `-- ${filename}` : "";
+    return `git ${gitCmd} ${defaults} ${commit} ${fileOpt}`;
+  }
+}
+
+// todo: change name
+// not really a cache, but a commit... manager?
+// just happens to cache as well
+// Or maybe there should be another class to describe purely handling commits
+class CommitCache {
   pos: number;
   cache: string[];
-}
-const state: State = {
-  pos: 0,
-  cache: [],
-};
+  // file to persist session
+  storeName: string;
 
-async function updateHashes(state: State) {
-  const from = curr(state) ? `${curr(state)}..` : "HEAD";
-  const gitCmd = `git rev-list --reverse ${from} | head -n5`;
-  state.cache = (await run(gitCmd)).split("\n").filter(Boolean);
-  // console.log("[STATE]:", state)
-}
-
-async function loadCommit(state: State) {
-  if (await exists(STABLE_STORE)) {
-    const blob = decoder.decode(Deno.readFileSync(STABLE_STORE));
-    state.cache = blob.split("\n").filter(Boolean);
-    // what about case where there's nothing in the file?
-    return;
+  constructor () {
+    this.pos = 0;
+    this.cache = [];
+    this.storeName = ".ripthebuild";
+    // in case persisted data exists
+    this._loadPersisted();
+    // if there was none (or it was empty), run git command
+    this.cache.length === 0 && this.hydrate();
   }
-  await updateHashes(state);
-}
 
-function curr({ pos, cache }: State): string {
-  return pos < cache.length ? cache[pos] : "";
-}
-
-async function next(state: State) {
-  const { pos, cache } = state;
-  if (pos < cache.length) {
-    state.pos += 1;
-    return;
+  _loadPersisted() {
+    const { cache, storeName } = this
+    if (existsSync(storeName)) {
+      const blob = decoder.decode(Deno.readFileSync(storeName));
+      cache = blob.split("\n").filter(Boolean);
+    }
   }
-  await updateHashes(state);
+
+  current(): string {
+    const { pos, cache } = this;
+    return pos < cache.length ? cache[pos] : "";
+  }
+
+  async hydrate(gitFmtr) {
+    const cmd = fmtHashCmd(this.current());
+    state.cache = (await run(cmd)).split("\n").filter(Boolean);
+  }
+
+  async next() {
+    const { pos, cache } = this;
+    if (pos < cache.length) {
+      this.pos += 1;
+      return;
+    }
+    await this.hydrate();
+  }
+
+  persist() {
+    const { pos, cache, storeName } = this;
+    const data = cache.slice(pos).join("\n");
+    console.log(`[PERSISTING]\n${data}`);
+    Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
+  }
 }
 
-async function run(gitCmd: string): Promise<string> {
-  console.log("[RUNNING]:", gitCmd);
-  const p = Deno.run({
-    cmd: ["sh"],
-    stdin: "piped",
-    stdout: "piped",
-  });
-  await p.stdin!.write(encoder.encode(gitCmd));
-  await p.stdin!.close();
-  const out = await p.output();
-  p.close();
-  return decoder.decode(out);
-}
+const commitCache = new CommitCache();
 
 // <command> [filename?]
 interface Options {
@@ -73,18 +93,22 @@ function parse(line: string): Options {
   return { cmd, filename };
 }
 
-async function buildGitCmd(opts: Options, state: State): Promise<string> {
-  const { cmd, filename } = opts;
-  let gitCmd = "show";
-  if (cmd[0] === "n") {
-    await next(state);
+async function run(cmd: string): Promise<string> {
+  if (execCtx.is(ExecCtx.Test)) {
+    return "not spawning process in test";
   }
-  if (cmd[0] === "v") {
-    // do nothing, just show current commit
-  }
-  const defaults = `--oneline ${filename ? "" : "--stat"}`;
-  const fileOpt = filename ? `-- ${filename}` : "";
-  return `git ${gitCmd} ${defaults} ${curr(state)} ${fileOpt}`;
+
+  console.log("[RUNNING]:", cmd);
+  const p = Deno.run({
+    cmd: ["sh"],
+    stdin: "piped",
+    stdout: "piped",
+  });
+  await p.stdin!.write(encoder.encode(cmd));
+  await p.stdin!.close();
+  const out = await p.output();
+  p.close();
+  return decoder.decode(out);
 }
 
 export async function setup(repoPath: string): Promise<{
@@ -95,19 +119,27 @@ export async function setup(repoPath: string): Promise<{
   let errMsg = "";
   try {
     Deno.chdir(repoPath);
-    await loadCommit(state);
     success = true;
-  } catch (error) {
+  } catch (err) {
     const { NotFound, PermissionDenied } = Deno.errors;
-    errMsg = "byzantine";
-    if (error instanceof NotFound) {
+    errMsg = "unknown";
+    if (err instanceof NotFound) {
       errMsg = `couldn't find: ${repoPath}`;
     }
-    if (error instanceof PermissionDenied) {
+    if (err instanceof PermissionDenied) {
       errMsg = `not allowed to view: ${repoPath}`;
     }
   }
   return { success, errMsg };
+}
+
+async function interpret(line: string) {
+  const { cmd, filename } = parse(line);
+  cmd[0] === "n" && await cache.next();
+  if (cmd[0] === "v") {
+    // do nothing, just show current commit
+  }
+  
 }
 
 export async function request(line: string): Promise<string> {
@@ -116,9 +148,8 @@ export async function request(line: string): Promise<string> {
   return run(gitCmd);
 }
 
-export function persist() {
-  const { pos, cache } = state;
-  const data = cache.slice(pos).join("\n");
-  console.log(`[PERSISTING]\n${data}`);
-  Deno.writeFileSync(STABLE_STORE, encoder.encode(data), { create: true });
+export function persist() { cache.persist(); }
+
+export const testExports = {
+  parse,
 }

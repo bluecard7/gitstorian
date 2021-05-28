@@ -1,6 +1,9 @@
 import { assertObjectMatch } from "https://deno.land/std@0.97.0/testing/asserts.ts";
 
 import * as ripthebuild from "../src/api.ts";
+import { ExecCtx, execCtx } from "../src/ctx.ts";
+
+execCtx.set(ExecCtx.Test);
 
 // fixture in this case is a git repo
 function createFixture(name: string, perm: number): function {
@@ -37,3 +40,4 @@ Deno.test("setup fails due to insufficient permissions", () => {
 // todo: separate buildGitCmd and test that
 // crux of this entire service
 // export it in "testing" object?
+
