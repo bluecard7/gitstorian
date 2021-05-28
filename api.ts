@@ -87,9 +87,27 @@ async function buildGitCmd(opts: Options, state: State): Promise<string> {
   return `git ${gitCmd} ${defaults} ${curr(state)} ${fileOpt}`;
 }
 
-export async function setup(repoPath: string) {
-  Deno.chdir(repoPath);
-  await loadCommit(state);
+export async function setup(repoPath: string): Promise<{
+  success: boolean;
+  errMsg: string;
+}> {
+  let success = false;
+  let errMsg = "";
+  try {
+    Deno.chdir(repoPath);
+    await loadCommit(state);
+    success = true;
+  } catch (error) {
+    const { NotFound, PermissionDenied } = Deno.errors;
+    errMsg = "byzantine";
+    if (error instanceof NotFound) {
+      errMsg = `couldn't find: ${repoPath}`;
+    }
+    if (error instanceof PermissionDenied) {
+      errMsg = `not allowed to view: ${repoPath}`;
+    }
+  }
+  return { success, errMsg };
 }
 
 export async function request(line: string): Promise<string> {
