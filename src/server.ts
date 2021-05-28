@@ -3,7 +3,7 @@ import * as ripthebuild from "./api.ts"; // maybe rename to lib?
 // deno run --allow-net --allow-run --allow-read --allow-write server.ts
 
 const server = http.serve({ port: 8081 });
-console.log(`HTTP webserver running.  Access it at:  http://localhost:8081/`);
+console.log(`HTTP webserver running at: http://localhost:8081/`);
 
 function matchURLAndMethod(
   { url, method }: http.ServerRequest,

@@ -1,7 +1,7 @@
 import { exists } from "https://deno.land/std/fs/mod.ts";
 
 // file to persist session
-const STABLE_STORE = ".gitstorian";
+const STABLE_STORE = ".ripthebuild";
 
 // TODO: gitstorian command for viewing diffs
 // just copy to Deno.stdout? Does less work in that case?
