@@ -3,27 +3,25 @@
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 import { execCtx } from "./ctx.ts";
 
-// TODO: gitstorian command for viewing diffs
-// just copy to Deno.stdout? Does less work in that case?
+/*
+ * Notes:
+ * if you want to support jumping between repos
+ * either do absolute paths or keep starting point/dir
+* */
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 // <command> [filename?]
-interface Options {
-  cmd: string;
+function parse(line: string): {
+  cmd: string; // technically could be undefined too, need validation
   filename: string | undefined;
-}
-
-function parse(line: string): Options {
+} {
   const [cmd, filename] = line.split(" ");
   return { cmd, filename };
 }
 
 async function run(cmd: string): Promise<string> {
-  if (execCtx.is(ExecCtx.Test)) {
-    return "not spawning process in test";
-  }
   console.log("[RUNNING]:", cmd);
   const p = Deno.run({
     cmd: ["sh"],
@@ -37,34 +35,31 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
-function fmtHashesCmd(fromCommit: string): string {
-  const from = fromCommit ? `${fromCommit}..` : "HEAD";
-  return `git rev-list --reverse ${from} | head -n5`;
-}
+// functions that format args to the correct git command
+const gitCmds = {
+  hashes(fromCommit: string): string {
+    const from = fromCommit ? `${fromCommit}..` : "HEAD";
+    return `git rev-list --reverse ${from} | head -n5`;
+  },
+  diff(commit: string, filename: string): string {
+    let gitCmd = "show";
+    const defaults = `--oneline ${filename ? "" : "--stat"}`;
+    const fileOpt = filename ? `-- ${filename}` : "";
+    return `git ${gitCmd} ${defaults} ${commit} ${fileOpt}`;
+  },
+};
 
-// instead having this process the filename, do that cache?
-function fmtDiffCmd(commit: string, filename: string): string {
-  let gitCmd = "show";
-  const defaults = `--oneline ${filename ? "" : "--stat"}`;
-  const fileOpt = filename ? `-- ${filename}` : "";
-  return `git ${gitCmd} ${defaults} ${commit} ${fileOpt}`;
-}
-
-// todo: change name
-// not really a cache, but a commit... manager?
-// just happens to cache as well
-// Or maybe there should be another class to describe purely handling commits
+// not really a cache, just uses it...
+// manager? store?
 class CommitCache {
   pos: number;
   cache: string[];
-  // file to persist session
   storeName: string;
 
   constructor() {
     this.pos = 0;
     this.cache = [];
     this.storeName = ".ripthebuild";
-    // in case persisted data exists
     this._loadPersisted();
   }
 
@@ -75,20 +70,19 @@ class CommitCache {
     }
   }
 
-  back = () => this.pos -= 1;
-  _current = (): string => this.cache[this.pos] || "";
-  forward = () => this.pos += 1;
-  async read(): string {
-    let value = this._current();
+  prev = () => this.pos -= 1;
+  next = () => this.pos += 1;
+  async read(): Promise<string> {
+    const currCommit = this.cache[this.pos] || "";
     if (this.pos + 1 === this.cache.length) {
-      await this._hydrate();
+      await this._hydrate(currCommit);
       this.pos = 0;
     }
-    return value;
+    return currCommit;
   }
 
-  async _hydrate() {
-    const cmd = fmtHashesCmd(this._current());
+  async _hydrate(currCommit: string) {
+    const cmd = gitCmds.hashes(currCommit);
     this.cache = (await run(cmd)).split("\n").filter(Boolean);
   }
 
@@ -115,10 +109,10 @@ export async function setup(repoPath: string): Promise<{
     const { NotFound, PermissionDenied } = Deno.errors;
     errMsg = "unknown";
     if (err instanceof NotFound) {
-      errMsg = `couldn't find: ${repoPath}`;
+      errMsg = `${repoPath} does not exist`;
     }
     if (err instanceof PermissionDenied) {
-      errMsg = `not allowed to view: ${repoPath}`;
+      errMsg = `not allowed to access ${repoPath}`;
     }
   }
   return { success, errMsg };
@@ -127,14 +121,12 @@ export async function setup(repoPath: string): Promise<{
 export async function request(line: string): Promise<string> {
   const { cmd, filename } = parse(line);
   cmd[0] === "n" && commitCache.next();
-  if (cmd[0] === "v") {
-    // do nothing, just show current commit
-  }
-  const commit = await commitCache.read()
-  return run(fmtDiffCmd(commit, filename));
+  // need validation of input, any input results in current
+  // commit being viewed.
+  // cmd[0] === "v" && view current commit
+  const commit = await commitCache.read();
+  return run(gitCmds.diff(commit, filename || ""));
 }
 
 export const { persist } = commitCache;
-export const testExports = {
-  parse,
-};
+export const testExports = { commitCache, gitCmds };
