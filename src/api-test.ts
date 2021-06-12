@@ -1,7 +1,7 @@
 import { assertObjectMatch } from "https://deno.land/std@0.97.0/testing/asserts.ts";
 
-import { setup, testExports } from "../src/api.ts";
-import { ExecCtx, execCtx } from "../src/ctx.ts";
+import { setup, testExports } from "./api.ts";
+import { ExecCtx, execCtx } from "./ctx.ts";
 execCtx.set(ExecCtx.Test);
 
 // setup
