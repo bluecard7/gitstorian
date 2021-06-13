@@ -82,18 +82,21 @@ class CommitCache {
     }
     // prev out of range
     if (this.pos < 0) {
-      if (this.firstCommit === this.cache[0]) return this.firstCommit;
+      if (this.firstCommit === this.cache[0]) {
+        this.pos = 0;
+        return this.firstCommit;
+      }
       this.cache = await this.prevPage(this.cache[0]);
       this.pos = this.cache.length - 1;
     }
     // next out of range
     if (this.pos >= this.cache.length) {
       const lastCommitPos = this.cache.length - 1;
-      const nextPage = await this.nextPage(this.cache[lastCommitPos])
-      // or should this be cyclic? 
+      const nextPage = await this.nextPage(this.cache[lastCommitPos]);
+      // or should this be cyclic?
       // Prev on first goes to last commit
       // next on last goes to first
-      if (!nextPage.length) return this.cache[lastCommitPos]
+      if (!nextPage.length) return this.cache[lastCommitPos];
       this.cache = nextPage;
       this.pos = 0;
     }
