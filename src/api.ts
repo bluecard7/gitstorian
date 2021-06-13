@@ -36,11 +36,9 @@ async function run(cmd: string): Promise<string> {
 }
 
 // functions that format args to the correct git command
+// a "page" is 10 commit hashes
+const PAGE_SIZE = 10;
 const gitCmds = {
-  hashes(fromCommit: string): string {
-    const from = fromCommit ? `${fromCommit}..` : "HEAD";
-    return `git rev-list --reverse ${from} | head -n5`;
-  },
   diff(commit: string, filename: string): string {
     let gitCmd = "show";
     const defaults = `--oneline ${filename ? "" : "--stat"}`;
@@ -55,35 +53,62 @@ class CommitCache {
   pos: number;
   cache: string[];
   storeName: string;
+  firstCommit: string;
 
   constructor() {
     this.pos = 0;
     this.cache = [];
     this.storeName = ".ripthebuild";
-    this._loadPersisted();
+    this.firstCommit = "";
   }
 
-  _loadPersisted() {
+  // Loads first commits from persisted state. If it doesn't
+  // exist, then fetch new commits from beginning.
+  async _loadInitialCommits() {
+    const initialPage = await this.nextPage("");
+    // need this to perform prev
+    this.firstCommit = initialPage[0];
     if (existsSync(this.storeName)) {
       const blob = decoder.decode(Deno.readFileSync(this.storeName));
       this.cache = blob.split("\n").filter(Boolean);
+    } else {
+      this.cache = initialPage;
     }
   }
 
   prev = () => this.pos -= 1;
   next = () => this.pos += 1;
   async read(): Promise<string> {
-    const currCommit = this.cache[this.pos] || "";
-    if (this.pos + 1 === this.cache.length) {
-      await this._hydrate(currCommit);
+    if (this.cache.length === 0) {
+      await this._loadInitialCommits();
+    }
+    // prev out of range
+    // todo: can't go past first commit
+    if (this.pos < 0) {
+      this.cache = await this.prevPage(this.cache[0]);
+      this.pos = this.cache.length - 1;
+    }
+    // next out of range
+    // todo: can't go past last commit
+    if (this.pos >= this.cache.length) {
+      const lastCommitPos = this.cache.length - 1;
+      this.cache = await this.nextPage(this.cache[lastCommitPos]);
       this.pos = 0;
     }
-    return currCommit;
+    return this.cache[this.pos] || "";
   }
 
-  async _hydrate(currCommit: string) {
-    const cmd = gitCmds.hashes(currCommit);
-    this.cache = (await run(cmd)).split("\n").filter(Boolean);
+  async prevPage(from: string | undefined): Promise<string[]> {
+    const range = `${this.firstCommit}..${from}`;
+    // includes from, so need to add 1 and remove it
+    const cmd = `git rev-list ${range} | head -n${PAGE_SIZE + 1}`;
+    return (await run(cmd)).split("\n").filter(Boolean).slice(1);
+  }
+
+  async nextPage(from: string | undefined): Promise<string[]> {
+    const range = from ? `${from}..` : "HEAD";
+    const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
+    return (await run(cmd)).split("\n").filter(Boolean);
   }
 
   persist() {
@@ -96,6 +121,8 @@ class CommitCache {
 
 const commitCache = new CommitCache();
 
+// todo: explicitly setup first - fail requests otherwise
+// don't like it uses folder server is run in by default
 export async function setup(repoPath: string): Promise<{
   success: boolean;
   errMsg: string;
