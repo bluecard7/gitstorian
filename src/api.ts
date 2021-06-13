@@ -139,6 +139,7 @@ const commitCache = new CommitCache();
 
 // todo: explicitly setup first - fail requests otherwise
 // don't like it uses folder server is run in by default
+// also check for .git folder presence too
 export async function setup(repoPath: string): Promise<{
   success: boolean;
   errMsg: string;

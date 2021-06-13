@@ -4,10 +4,36 @@ import { useEffect, useState } from 'react'
 import { useSpring, animated } from 'react-spring'
 import styles from '../styles/Home.module.css'
 
+function useAPI() {
+  const [data, setData] = useState("")
+  const baseURL = 'http://localhost:8081'
+
+  async function setupRepo() {
+    const data = await fetch(`${baseURL}/repo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type' : 'application/json',
+      },
+      body: '../deno',
+    })
+    console.log('setup request', data)
+  }
+
+  async function loadDiff(cmd: string) {
+    console.log(cmd)
+    if (!['prev', 'curr', 'next'].includes(cmd)){
+      return
+    }
+    const data = await fetch(`${baseURL}/commit/${cmd}`)
+    setData(await data.text())
+  }
+  return { data, setupRepo, loadDiff };
+}
+
 // next: fetch data and render in frame
-function Frames() {
-  const [cmd, setCmd] = useState('view')
+function Frame() {
   const [commit, setCommit] = useState(0)
+  const { data, setupRepo, loadDiff } = useAPI()
   const styles = useSpring({
     from: { opacity: 0.1 },
     to: { opacity: 1 },
@@ -21,19 +47,23 @@ function Frames() {
   })
 
   useEffect(() => {
-    function handleKey({ code }) {
+    setupRepo().then(() => {
+      loadDiff('curr')
+    })
+    async function handleKey({ code }) {
+      console.log(code)
       if (code === 'ArrowLeft') { 
-        setCmd('prev')
         setCommit(prevCommit => {
           return prevCommit && prevCommit - 1
         })
+        await loadDiff('prev')
       }
       if (code === 'ArrowRight') {
-        setCmd('next')
         // todo: bound by number of commits
         setCommit(prevCommit => {
           return prevCommit + 1
         })
+        await loadDiff('next')
       }
     }
     window?.addEventListener('keydown', handleKey)
@@ -49,9 +79,10 @@ function Frames() {
   return (
     <div style={divStyle}>
       <animated.div style={styles}>
-        Hello you are on {cmd}{' '}
+        Hello you are on{' '}
         {commit < 0 ? '' : '+'}{commit}
       </animated.div>
+      <textarea rows="5" cols="30" value={data} readOnly />
     </div>
   )
 }
@@ -75,7 +106,7 @@ export default function Home() {
           <code className={styles.code}>pages/index.js</code>
         </p>
 
-        <Frames />
+        <Frame />
 
         <div className={styles.grid}>
           <a href="https://nextjs.org/docs" className={styles.card}>
