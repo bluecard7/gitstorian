@@ -64,35 +64,37 @@ class CommitCache {
 
   // Loads first commits from persisted state. If it doesn't
   // exist, then fetch new commits from beginning.
-  async _loadInitialCommits() {
+  async _loadInitialCommits(): Promise<string[]> {
     const initialPage = await this.nextPage("");
     // need this to perform prev
     this.firstCommit = initialPage[0];
     if (existsSync(this.storeName)) {
       const blob = decoder.decode(Deno.readFileSync(this.storeName));
-      this.cache = blob.split("\n").filter(Boolean);
-    } else {
-      this.cache = initialPage;
+      return blob.split("\n").filter(Boolean);
     }
+    return initialPage;
   }
 
-  prev = () => this.pos -= 1;
-  next = () => this.pos += 1;
   async read(): Promise<string> {
-    if (this.cache.length === 0) {
-      await this._loadInitialCommits();
+    if (!this.cache.length) {
+      this.cache = await this._loadInitialCommits();
+      this.pos = 0;
     }
     // prev out of range
-    // todo: can't go past first commit
     if (this.pos < 0) {
+      if (this.firstCommit === this.cache[0]) return this.firstCommit;
       this.cache = await this.prevPage(this.cache[0]);
       this.pos = this.cache.length - 1;
     }
     // next out of range
-    // todo: can't go past last commit
     if (this.pos >= this.cache.length) {
       const lastCommitPos = this.cache.length - 1;
-      this.cache = await this.nextPage(this.cache[lastCommitPos]);
+      const nextPage = await this.nextPage(this.cache[lastCommitPos])
+      // or should this be cyclic? 
+      // Prev on first goes to last commit
+      // next on last goes to first
+      if (!nextPage.length) return this.cache[lastCommitPos]
+      this.cache = nextPage;
       this.pos = 0;
     }
     return this.cache[this.pos] || "";
@@ -109,6 +111,20 @@ class CommitCache {
     const range = from ? `${from}..` : "HEAD";
     const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
     return (await run(cmd)).split("\n").filter(Boolean);
+  }
+
+  prev(): Promise<string> {
+    this.pos -= 1;
+    return this.read();
+  }
+
+  curr(): Promise<string> {
+    return this.read();
+  }
+
+  next(): Promise<string> {
+    this.pos += 1;
+    return this.read();
   }
 
   persist() {
@@ -147,11 +163,12 @@ export async function setup(repoPath: string): Promise<{
 
 export async function request(line: string): Promise<string> {
   const { cmd, filename } = parse(line);
-  cmd[0] === "n" && commitCache.next();
+  // default behavior is viewing current commit
+  let commit = await commitCache.curr();
+  if (cmd[0] === "p") commit = await commitCache.prev();
+  if (cmd[0] === "n") commit = await commitCache.next();
   // need validation of input, any input results in current
   // commit being viewed.
-  // cmd[0] === "v" && view current commit
-  const commit = await commitCache.read();
   return run(gitCmds.diff(commit, filename || ""));
 }
 
