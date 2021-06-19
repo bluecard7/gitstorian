@@ -4,4 +4,4 @@ deno run \
   --allow-write \
   --allow-read \
   --unstable \
-  src/server.ts
+  src/server.ts $1

@@ -142,19 +142,23 @@ const commitCache = new CommitCache();
 
 // todo: explicitly setup first - fail requests otherwise
 // don't like it uses folder server is run in by default
-// also check for .git folder presence too
-export async function setup(repoPath: string): Promise<{
+export function setup(repoPath: string): {
   success: boolean;
   errMsg: string;
-}> {
+} {
   let success = false;
   let errMsg = "";
   try {
     Deno.chdir(repoPath);
+    // check if its a git repo
+    if (!existsSync(".git")) {
+      return { success, errMsg: `${Deno.cwd()} is not a git repo` };
+    }
     success = true;
   } catch (err) {
+    console.log('Repo path:', repoPath)
+    errMsg = err.message;
     const { NotFound, PermissionDenied } = Deno.errors;
-    errMsg = "unknown";
     if (err instanceof NotFound) {
       errMsg = `${repoPath} does not exist`;
     }

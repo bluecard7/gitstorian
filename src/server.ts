@@ -1,5 +1,13 @@
 import * as http from "https://deno.land/std@0.97.0/http/server.ts";
 import * as ripthebuild from "./api.ts"; // maybe rename to lib?
+import { existsSync } from "https://deno.land/std/fs/mod.ts";
+
+const repoPath = Deno.args[0]
+const { success, errMsg } = ripthebuild.setup(repoPath)
+if (!success) {
+  console.log(errMsg)
+  Deno.exit(1)
+}
 
 const server = http.serve({ port: 8081 });
 console.log(`HTTP webserver running at: http://localhost:8081/`);
@@ -14,15 +22,6 @@ function matchURLAndMethod(
 }
 
 async function handle(req: http.ServerRequest): Promise<http.Response> {
-  if (matchURLAndMethod(req, "POST", "/repo")) {
-    const repoPath = new TextDecoder().decode(await Deno.readAll(req.body));
-    const { success, errMsg } = await ripthebuild.setup(repoPath);
-      
-    return {
-      status: success ? 200 : 409,
-      body: success ? "setup complete" : errMsg,
-    };
-  }
 
   if (matchURLAndMethod(req, "GET", "/commit/prev")) {
     return { status: 200, body: await ripthebuild.request("p") };
