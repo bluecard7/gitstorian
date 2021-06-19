@@ -65,14 +65,16 @@ function Frame() {
   }, [])
 
   const lines = data.split('\n')
-  const cols = Math.max(...lines.map(line => line.length))
+  // rows and cols padded to avoid scrolling + wrapping
+  const dims = {
+    rows: lines.length + 1,
+    cols: Math.max(...lines.map(line => line.length)) + 5,
+  }
 
-  // rows and cols padded to avoid scrolling + overflow
   return (
       <animated.textarea 
         style={styles} 
-        rows={lines.length + 1} 
-        cols={cols + 5} 
+        {...dims}
         value={data} 
         readOnly 
       />
