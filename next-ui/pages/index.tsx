@@ -7,28 +7,35 @@ import styles from '../styles/Home.module.css'
 function useAPI() {
   const [data, setData] = useState("")
   const baseURL = 'http://localhost:8081'
-  
+
+  // if TypeError, abort all requests after?
   async function loadDiff(cmd: string) {
-    console.log(cmd)
     if (!['prev', 'curr', 'next'].includes(cmd)){
       return
     }
+    // if caching, return if already requested
     const data = await (
       fetch(`${baseURL}/commit/${cmd}`)
         .then(data => data)
         .catch(err => ({ text: () => err.message }))
     )
-    console.log(data)
-    setData(await data.text())
+    const text = await data.text();
+    // if (data.ok) { 
+    //  would be nice to cache texts + avoid requests
+    //  but would need some semblance of hash order
+    //  and need to change api to:
+    //  - send block of hashes
+    //  - then client needs to specify hash to get diff
+    // }
+    setData(text.slice(0, -1))
   }
   return { data, loadDiff };
 }
 
 function Frame() {
-  const [commit, setCommit] = useState(0)
   const { data, loadDiff } = useAPI()
   const styles = useSpring({
-    from: { opacity: 0.1 },
+    from: { opacity: 0.3 },
     to: { opacity: 1 },
     config: { 
       mass: 1, 
@@ -41,19 +48,14 @@ function Frame() {
 
   useEffect(() => {
     // load some commits here
+    loadDiff('curr')
     async function handleKey({ code }) {
       console.log(code)
       if (code === 'ArrowLeft') { 
-        setCommit(prevCommit => {
-          return prevCommit && prevCommit - 1
-        })
         await loadDiff('prev')
       }
       if (code === 'ArrowRight') {
         // todo: bound by number of commits
-        setCommit(prevCommit => {
-          return prevCommit + 1
-        })
         await loadDiff('next')
       }
     }
@@ -62,19 +64,18 @@ function Frame() {
     return() => window?.removeEventListener('keydown', handleKey)
   }, [])
 
-  const divStyle = {
-    border: '1px solid #eaeaea',
-    padding: '1.5rem'
-  }
+  const lines = data.split('\n')
+  const cols = Math.max(...lines.map(line => line.length))
 
+  // rows and cols padded to avoid scrolling + overflow
   return (
-    <div style={divStyle}>
-      <animated.div style={styles}>
-        Hello you are on{' '}
-        {commit < 0 ? '' : '+'}{commit}
-      </animated.div>
-      <textarea rows="5" cols="30" value={data} readOnly />
-    </div>
+      <animated.textarea 
+        style={styles} 
+        rows={lines.length + 1} 
+        cols={cols + 5} 
+        value={data} 
+        readOnly 
+      />
   )
 }
 
@@ -90,19 +91,6 @@ export default function Home() {
       <main className={styles.main}>
         <Frame />
       </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <span className={styles.logo}>
-            <Image src="/vercel.svg" alt="Vercel Logo" width={72} height={16} />
-          </span>
-        </a>
-      </footer>
     </div>
   )
 }

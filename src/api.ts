@@ -1,13 +1,4 @@
-// todo: see if mem of compiled binary is majorly affected by this import
-// existsSync is ppretty simple to implement
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
-import { execCtx } from "./ctx.ts";
-
-/*
- * Notes:
- * if you want to support jumping between repos
- * either do absolute paths or keep starting point/dir
-* */
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -47,8 +38,6 @@ const gitCmds = {
   },
 };
 
-// not really a cache, just uses it...
-// manager? store?
 class CommitCache {
   pos: number;
   cache: string[];
