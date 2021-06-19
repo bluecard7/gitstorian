@@ -58,6 +58,7 @@ class CommitCache {
     // need this to perform prev
     this.firstCommit = initialPage[0];
     if (existsSync(this.storeName)) {
+      // todo: verify that this is executed
       const blob = decoder.decode(Deno.readFileSync(this.storeName));
       return blob.split("\n").filter(Boolean);
     }
@@ -65,7 +66,7 @@ class CommitCache {
   }
 
   async read(): Promise<string> {
-    if (!this.cache.length) {
+    if (this.cache.length === 0) {
       this.cache = await this._loadInitialCommits();
       this.pos = 0;
     }
@@ -96,7 +97,10 @@ class CommitCache {
     const range = `${this.firstCommit}..${from}`;
     // includes from, so need to add 1 and remove it
     const cmd = `git rev-list ${range} | head -n${PAGE_SIZE + 1}`;
-    return (await run(cmd)).split("\n").filter(Boolean).slice(1);
+    return (await run(cmd)).split("\n")
+      .filter(Boolean)
+      .reverse()
+      .slice(0, -1);
   }
 
   async nextPage(from: string | undefined): Promise<string[]> {
@@ -145,7 +149,7 @@ export function setup(repoPath: string): {
     }
     success = true;
   } catch (err) {
-    console.log('Repo path:', repoPath)
+    console.log("Repo path:", repoPath);
     errMsg = err.message;
     const { NotFound, PermissionDenied } = Deno.errors;
     if (err instanceof NotFound) {
