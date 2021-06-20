@@ -3,12 +3,13 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-// <command> [filename?]
+// /<hash?>/<filename?>
 function parse(line: string): {
-  cmd: string; // technically could be undefined too, need validation
-  filename: string | undefined;
+  hash: string;
+  filename: string;
 } {
-  const [cmd, filename] = line.split(" ");
+  let [hash, filename] = line.split(" ");
+  filename ||= ''
   return { cmd, filename };
 }
 
@@ -38,38 +39,17 @@ const gitCmds = {
   },
 };
 
-class CommitCache {
-  pos: number;
-  cache: string[];
+class CommitReader {
   storeName: string;
-  firstCommit: string;
 
-  constructor() {
-    this.pos = 0;
-    this.cache = [];
+  constructor {
     this.storeName = ".ripthebuild";
-    this.firstCommit = "";
   }
 
-  // Loads first commits from persisted state. If it doesn't
-  // exist, then fetch new commits from beginning.
-  async _loadInitialCommits(): Promise<string[]> {
-    const initialPage = await this.nextPage("");
-    // need this to perform prev
-    this.firstCommit = initialPage[0];
-    if (existsSync(this.storeName)) {
-      // todo: verify that this is executed
-      const blob = decoder.decode(Deno.readFileSync(this.storeName));
-      return blob.split("\n").filter(Boolean);
-    }
-    return initialPage;
-  }
-
-  async read(): Promise<string> {
-    if (this.cache.length === 0) {
-      this.cache = await this._loadInitialCommits();
-      this.pos = 0;
-    }
+  async read(hash: string, filename: string): Promise<string> {
+    return run(gitCmds.diff(hash, filename));
+    /* move logic to client side
+    cases to consider
     // prev out of range
     if (this.pos < 0) {
       if (this.firstCommit === this.cache[0]) {
@@ -90,7 +70,44 @@ class CommitCache {
       this.cache = nextPage;
       this.pos = 0;
     }
-    return this.cache[this.pos] || "";
+    */
+  }
+
+
+  // POST, with unread commits, maybe just last commit read?
+  bookmark() {
+    const { pos, cache, storeName } = this;
+    const data = cache.slice(pos).join("\n");
+    console.log(`[PERSISTING]\n${data}`);
+    Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
+  }
+}
+
+class CommitStream {
+  // how to handle streaming?
+  // can have client send commit and whether prev or next
+  pos: number;
+  cache: string[];
+  firstCommit: string;
+
+  constructor() {
+    this.pos = 0;
+    this.cache = [];
+    this.firstCommit = "";
+  }
+
+  // Loads first commits from persisted state. If it doesn't
+  // exist, then fetch new commits from beginning.
+  async initialPage(): Promise<string[]> {
+    const initialPage = await this.nextPage("");
+    // need this to perform prev
+    this.firstCommit = initialPage[0];
+    if (existsSync(this.storeName)) {
+      // todo: verify that this is executed
+      const blob = decoder.decode(Deno.readFileSync(this.storeName));
+      return blob.split("\n").filter(Boolean);
+    }
+    return initialPage;
   }
 
   async prevPage(from: string | undefined): Promise<string[]> {
@@ -111,30 +128,10 @@ class CommitCache {
     const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
     return (await run(cmd)).split("\n").filter(Boolean);
   }
-
-  prev(): Promise<string> {
-    this.pos -= 1;
-    return this.read();
-  }
-
-  curr(): Promise<string> {
-    return this.read();
-  }
-
-  next(): Promise<string> {
-    this.pos += 1;
-    return this.read();
-  }
-
-  persist() {
-    const { pos, cache, storeName } = this;
-    const data = cache.slice(pos).join("\n");
-    console.log(`[PERSISTING]\n${data}`);
-    Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
-  }
 }
 
-const commitCache = new CommitCache();
+const commitReader = new CommitReader();
+const commitStream = new CommitStream();
 
 // todo: explicitly setup first - fail requests otherwise
 // don't like it uses folder server is run in by default
@@ -166,15 +163,9 @@ export function setup(repoPath: string): {
 }
 
 export async function request(line: string): Promise<string> {
-  const { cmd, filename } = parse(line);
-  // default behavior is viewing current commit
-  let commit = await commitCache.curr();
-  if (cmd[0] === "p") commit = await commitCache.prev();
-  if (cmd[0] === "n") commit = await commitCache.next();
-  // need validation of input, any input results in current
-  // commit being viewed.
-  return run(gitCmds.diff(commit, filename || ""));
+  const { hash, filename } = parse(line);
+  return commitReader.read(hash, filename));
 }
 
-export const { persist } = commitCache;
+export const { bookmark } = commitCache;
 export const testExports = { commitCache, gitCmds };
