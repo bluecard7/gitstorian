@@ -12,7 +12,7 @@ if (!success) {
 const server = http.serve({ port: 8081 });
 console.log(`HTTP webserver running at: http://localhost:8081/`);
 
-function matchURLAndMethod(
+function match(
   { url, method }: http.ServerRequest,
   expectedMethod: string,
   expectedURL: string,
@@ -21,17 +21,26 @@ function matchURLAndMethod(
 }
 
 async function handle(req: http.ServerRequest): Promise<http.Response> {
-  if (matchURLAndMethod(req, "GET", "/commit/prev/")) {
+  // maybe todo: remove prev, curr, next?
+  if (match(req, "GET", "/commit/prev/")) {
     return { status: 200, body: await ripthebuild.request("p") };
   }
-  if (matchURLAndMethod(req, "GET", "/commit/curr/")) {
+  if (match(req, "GET", "/commit/curr/")) {
     const filename = req.url.split('/').slice(-1)
     return { status: 200, body: await ripthebuild.request(`v ${filename}`) };
   }
-  if (matchURLAndMethod(req, "GET", "/commit/next/")) {
+  if (match(req, "GET", "/commit/next/")) {
     return { status: 200, body: await ripthebuild.request("n") };
   }
-  // maybe todo: add path with commit hash: /commit/<hash>
+
+  // /commit/<hash?>/<file?>
+  if (match(req, "GET", "/commit/") {
+    // if just /commit/, then return block hashes
+    // if /commit/<hash>/, then return file diff od that hash
+    // if /commit/<hash>/<file>, then return diff of that file in that hash
+    return { status: 200, body: await ripthebuild.request(``) }
+  }
+
   return { status: 404, body: "unknown path" };
 }
 
