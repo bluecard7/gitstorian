@@ -17,23 +17,21 @@ function matchURLAndMethod(
   expectedMethod: string,
   expectedURL: string,
 ): boolean {
-  // todo: support for query params
-  return url === expectedURL && method === expectedMethod;
+  return url.startsWith(expectedURL) && method === expectedMethod;
 }
 
 async function handle(req: http.ServerRequest): Promise<http.Response> {
-
-  if (matchURLAndMethod(req, "GET", "/commit/prev")) {
+  if (matchURLAndMethod(req, "GET", "/commit/prev/")) {
     return { status: 200, body: await ripthebuild.request("p") };
   }
-  if (matchURLAndMethod(req, "GET", "/commit/curr")) {
-    // if ?file=<> is provided, then line should be `v ${file}`
-    // similarly for the other paths
-    return { status: 200, body: await ripthebuild.request("v") };
+  if (matchURLAndMethod(req, "GET", "/commit/curr/")) {
+    const filename = req.url.split('/').slice(-1)
+    return { status: 200, body: await ripthebuild.request(`v ${filename}`) };
   }
-  if (matchURLAndMethod(req, "GET", "/commit/next")) {
+  if (matchURLAndMethod(req, "GET", "/commit/next/")) {
     return { status: 200, body: await ripthebuild.request("n") };
   }
+  // maybe todo: add path with commit hash: /commit/<hash>
   return { status: 404, body: "unknown path" };
 }
 

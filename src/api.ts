@@ -94,9 +94,10 @@ class CommitCache {
   }
 
   async prevPage(from: string | undefined): Promise<string[]> {
-    const range = `${this.firstCommit}..${from}`;
-    // includes from, so need to add 1 and remove it
-    const cmd = `git rev-list ${range} | head -n${PAGE_SIZE + 1}`;
+    const range = `${this.firstCommit} ${from}`;
+    // Queries for all commits b/n first commit and from
+    // inclusive, gets only the first PAGE_SIZE + 1 commits
+    const cmd = `git rev-list ${range} -n${PAGE_SIZE + 1}`;
     return (await run(cmd)).split("\n")
       .filter(Boolean)
       .reverse()
@@ -105,6 +106,8 @@ class CommitCache {
 
   async nextPage(from: string | undefined): Promise<string[]> {
     const range = from ? `${from}..` : "HEAD";
+    // Need to use head instead of just -n in this case
+    // because reverse is applied after cutting in rev-list
     const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
     return (await run(cmd)).split("\n").filter(Boolean);
   }

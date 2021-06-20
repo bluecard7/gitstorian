@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useSpring, animated } from 'react-spring'
 import styles from '../styles/Home.module.css'
 
@@ -10,15 +10,14 @@ function useAPI() {
 
   // if TypeError, abort all requests after?
   async function loadDiff(cmd: string) {
-    if (!['prev', 'curr', 'next'].includes(cmd)){
-      return
-    }
     // if caching, return if already requested
     const data = await (
       fetch(`${baseURL}/commit/${cmd}`)
         .then(data => data)
         .catch(err => ({ text: () => err.message }))
     )
+    // todo: response should have diff + files involved 
+    // await data.json()
     const text = await data.text();
     // if (data.ok) { 
     //  would be nice to cache texts + avoid requests
@@ -27,14 +26,37 @@ function useAPI() {
     //  - send block of hashes
     //  - then client needs to specify hash to get diff
     // }
-    setData(text.slice(0, -1))
+    setData(text.trim())
   }
   return { data, loadDiff };
 }
 
+// better if the API to be more hash orientated
+function FrameMenu({ hash, data }) {
+  const [menu, setMenu] = useState([])
+
+  useEffect(() => {
+    
+  }, [hash]) 
+
+  return (
+    <>
+      {lines.slice(1, -1)
+        .map(line => line.split('|'))
+        .filter(split => split.length === 2)
+        .map(({ [0]: filename}) => (
+          <button onClick={() => loadDiff(`curr/${filename.trim()}`)}>
+            {filename}
+          </button>
+        ))
+      }
+    </>
+  )
+}
+
 function Frame() {
   const { data, loadDiff } = useAPI()
-  const styles = useSpring({
+  const fadeStyle = useSpring({
     from: { opacity: 0.3 },
     to: { opacity: 1 },
     config: { 
@@ -48,15 +70,15 @@ function Frame() {
 
   useEffect(() => {
     // load some commits here
-    loadDiff('curr')
+    loadDiff('curr/')
     async function handleKey({ code }) {
       console.log(code)
       if (code === 'ArrowLeft') { 
-        await loadDiff('prev')
+        await loadDiff('prev/')
       }
       if (code === 'ArrowRight') {
         // todo: bound by number of commits
-        await loadDiff('next')
+        await loadDiff('next/')
       }
     }
     window?.addEventListener('keydown', handleKey)
@@ -72,12 +94,15 @@ function Frame() {
   }
 
   return (
+    <Fragment>
       <animated.textarea 
-        style={styles} 
+        style={fadeStyle} 
         {...dims}
         value={data} 
         readOnly 
       />
+      <FrameMenu data={data}>
+    </Fragment>
   )
 }
 
