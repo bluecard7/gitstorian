@@ -3,16 +3,6 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-// /<hash?>/<filename?>
-function parse(line: string): {
-  hash: string;
-  filename: string;
-} {
-  let [hash, filename] = line.split(" ");
-  filename ||= ''
-  return { cmd, filename };
-}
-
 async function run(cmd: string): Promise<string> {
   console.log("[RUNNING]:", cmd);
   const p = Deno.run({
@@ -42,37 +32,13 @@ const gitCmds = {
 class CommitReader {
   storeName: string;
 
-  constructor {
+  constructor() {
     this.storeName = ".ripthebuild";
   }
 
   async read(hash: string, filename: string): Promise<string> {
     return run(gitCmds.diff(hash, filename));
-    /* move logic to client side
-    cases to consider
-    // prev out of range
-    if (this.pos < 0) {
-      if (this.firstCommit === this.cache[0]) {
-        this.pos = 0;
-        return this.firstCommit;
-      }
-      this.cache = await this.prevPage(this.cache[0]);
-      this.pos = this.cache.length - 1;
-    }
-    // next out of range
-    if (this.pos >= this.cache.length) {
-      const lastCommitPos = this.cache.length - 1;
-      const nextPage = await this.nextPage(this.cache[lastCommitPos]);
-      // or should this be cyclic?
-      // Prev on first goes to last commit
-      // next on last goes to first
-      if (!nextPage.length) return this.cache[lastCommitPos];
-      this.cache = nextPage;
-      this.pos = 0;
-    }
-    */
   }
-
 
   // POST, with unread commits, maybe just last commit read?
   bookmark() {
@@ -84,20 +50,17 @@ class CommitReader {
 }
 
 class CommitStream {
-  // how to handle streaming?
-  // can have client send commit and whether prev or next
-  pos: number;
-  cache: string[];
   firstCommit: string;
-
   constructor() {
-    this.pos = 0;
-    this.cache = [];
     this.firstCommit = "";
   }
 
-  // Loads first commits from persisted state. If it doesn't
-  // exist, then fetch new commits from beginning.
+  async flip(order: string, hash: string): Promise<string[]> {
+    if (!hash) return initialPage();
+    if (order === "prev") return prevPage(hash);
+    return nextPage(hash);
+  }
+
   async initialPage(): Promise<string[]> {
     const initialPage = await this.nextPage("");
     // need this to perform prev
@@ -110,7 +73,7 @@ class CommitStream {
     return initialPage;
   }
 
-  async prevPage(from: string | undefined): Promise<string[]> {
+  async prevPage(from: string): Promise<string[]> {
     const range = `${this.firstCommit} ${from}`;
     // Queries for all commits b/n first commit and from
     // inclusive, gets only the first PAGE_SIZE + 1 commits
@@ -121,7 +84,7 @@ class CommitStream {
       .slice(0, -1);
   }
 
-  async nextPage(from: string | undefined): Promise<string[]> {
+  async nextPage(from: string): Promise<string[]> {
     const range = from ? `${from}..` : "HEAD";
     // Need to use head instead of just -n in this case
     // because reverse is applied after cutting in rev-list
@@ -130,11 +93,6 @@ class CommitStream {
   }
 }
 
-const commitReader = new CommitReader();
-const commitStream = new CommitStream();
-
-// todo: explicitly setup first - fail requests otherwise
-// don't like it uses folder server is run in by default
 export function setup(repoPath: string): {
   success: boolean;
   errMsg: string;
@@ -162,10 +120,7 @@ export function setup(repoPath: string): {
   return { success, errMsg };
 }
 
-export async function request(line: string): Promise<string> {
-  const { hash, filename } = parse(line);
-  return commitReader.read(hash, filename));
-}
-
-export const { bookmark } = commitCache;
-export const testExports = { commitCache, gitCmds };
+const commitReader = new CommitReader();
+const commitStream = new CommitStream();
+export const { read, bookmark } = commitReader;
+export const { flip } = commitStream;

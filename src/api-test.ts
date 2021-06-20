@@ -40,10 +40,10 @@ Deno.test("setup fails due to insufficient permissions", async () => {
 const { gitCmds } = testExports;
 Deno.test("gitCmds.hashes creates a command that gets hashes from start of history if called with falsy value", async () => {
   // need a repo setup with at least one commit
-  throw Error('not ready');
+  throw Error("not ready");
   // probably will be called with empty string
   const result = gitCmds.hashes("");
-  assertEquals(result, "...")
+  assertEquals(result, "...");
 });
 
 Deno.test("gitCmds.hashes creates a command that gets the next 5 commits after the commit provided", () => {});
