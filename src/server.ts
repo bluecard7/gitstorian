@@ -1,9 +1,9 @@
 import * as http from "https://deno.land/std@0.97.0/http/server.ts";
-import { flip, read } from "./api.ts"; // maybe rename to lib?
+import { flip, read, setup } from "./api.ts"; // maybe rename to lib?
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const repoPath = Deno.args[0];
-const { success, errMsg } = ripthebuild.setup(repoPath);
+const { success, errMsg } = setup(repoPath);
 if (!success) {
   console.log(errMsg);
   Deno.exit(1);
@@ -25,14 +25,15 @@ async function handle(req: http.ServerRequest): Promise<http.Response> {
   if (match(req, "GET", "/commits/")) {
     const path = req.url.split("/").slice(2);
     const [order, hash] = path;
-    return { status: 200, body: await flip(order || "", hash || "") };
+    const body = JSON.stringify(await flip(order || "", hash || ""));
+    return { status: 200, body };
   }
   // if /diff/<hash>, then return file diff of that hash
   // if /diff/<hash>/<file>, then return diff of that file in that hash
   if (match(req, "GET", "/diffs/")) {
     const path = req.url.split("/").slice(2);
     const [hash, filename] = path;
-    return { status: 200, body: await read(hash || "", file || "") };
+    return { status: 200, body: await read(hash || "", filename || "") };
   }
   return { status: 404, body: "unknown path" };
 }

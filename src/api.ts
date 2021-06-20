@@ -20,32 +20,19 @@ async function run(cmd: string): Promise<string> {
 // functions that format args to the correct git command
 // a "page" is 10 commit hashes
 const PAGE_SIZE = 10;
-const gitCmds = {
-  diff(commit: string, filename: string): string {
-    let gitCmd = "show";
-    const defaults = `--oneline ${filename ? "" : "--stat"}`;
-    const fileOpt = filename ? `-- ${filename}` : "";
-    return `git ${gitCmd} ${defaults} ${commit} ${fileOpt}`;
-  },
-};
+const storeName = ".ripthebuild";
 
 class CommitReader {
-  storeName: string;
-
-  constructor() {
-    this.storeName = ".ripthebuild";
-  }
-
   async read(hash: string, filename: string): Promise<string> {
-    return run(gitCmds.diff(hash, filename));
+    const defaults = `--oneline ${filename || "--stat"}`;
+    const fileOpt = filename && `-- ${filename}`;
+    return run(`git show ${defaults} ${hash} ${fileOpt}`);
   }
 
   // POST, with unread commits, maybe just last commit read?
   bookmark() {
-    const { pos, cache, storeName } = this;
-    const data = cache.slice(pos).join("\n");
-    console.log(`[PERSISTING]\n${data}`);
-    Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
+    //console.log(`[PERSISTING]\n${data}`);
+    //Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
   }
 }
 
@@ -56,18 +43,18 @@ class CommitStream {
   }
 
   async flip(order: string, hash: string): Promise<string[]> {
-    if (!hash) return initialPage();
-    if (order === "prev") return prevPage(hash);
-    return nextPage(hash);
+    if (!hash) return this.initialPage();
+    if (order === "prev") return this.prevPage(hash);
+    return this.nextPage(hash);
   }
 
   async initialPage(): Promise<string[]> {
     const initialPage = await this.nextPage("");
     // need this to perform prev
     this.firstCommit = initialPage[0];
-    if (existsSync(this.storeName)) {
+    if (existsSync(storeName)) {
       // todo: verify that this is executed
-      const blob = decoder.decode(Deno.readFileSync(this.storeName));
+      const blob = decoder.decode(Deno.readFileSync(storeName));
       return blob.split("\n").filter(Boolean);
     }
     return initialPage;
