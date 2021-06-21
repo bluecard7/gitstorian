@@ -1,61 +1,78 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useSpring, animated } from 'react-spring'
 import styles from '../styles/Home.module.css'
 
 function useAPI() {
-  const [data, setData] = useState("")
+  const [hashes, setHashes] = useState([])
+  const [diff, setDiff] = useState("")
   const baseURL = 'http://localhost:8081'
 
-  // if TypeError, abort all requests after?
-  async function loadDiff(cmd: string) {
-    // if caching, return if already requested
+  async function loadHashes(order: string, hash: string): [] {
     const data = await (
-      fetch(`${baseURL}/commit/${cmd}`)
+      fetch(`${baseURL}/commits/${order}/${hash}`)
         .then(data => data)
         .catch(err => ({ text: () => err.message }))
     )
-    // todo: response should have diff + files involved 
-    // await data.json()
-    const text = await data.text();
-    // if (data.ok) { 
-    //  would be nice to cache texts + avoid requests
-    //  but would need some semblance of hash order
-    //  and need to change api to:
-    //  - send block of hashes
-    //  - then client needs to specify hash to get diff
-    // }
-    setData(text.trim())
+    const page = data.ok && await data.json()
+    data.ok && setHashes(page)
+    return page || []
   }
-  return { data, loadDiff };
+
+  // if TypeError, abort all requests after?
+  async function loadDiff(hash: string, filename: string): string {
+    // if caching, return if already requested
+    const data = await (
+        fetch(`${baseURL}/diffs/${hash}/${filename}`)
+        .then(data => data)
+        .catch(err => ({ text: () => err.message }))
+    )
+    // await data.json()?
+    const text = (await data.text()).trim();
+    // if (data.ok) { 
+    //  todo: cache texts + avoid requests
+    // }
+    setDiff(text)
+    return text
+  }
+  return { 
+    data: { hashes, diff },
+    load: { 
+      hashes: loadHashes, 
+      diff: loadDiff, 
+    }
+  };
 }
 
-// better if the API to be more hash orientated
-function FrameMenu({ hash, data }) {
-  const [menu, setMenu] = useState([])
+function FrameMenu({ hash, diff, load }) {
+  const formatMenu = () => {
+    return diff.split('\n')
+      .map(line => line.split('|'))
+      .map(parts => parts.length === 2 && parts[0].trim())
+      .map(filename => filename && (
+        <button onClick={() => load.diff(hash, filename)}>
+          {filename}
+        </button>
+      ))
+  }
+  const [menu, setMenu] = useState(formatMenu())
 
-  useEffect(() => {
-    
-  }, [hash]) 
+  useEffect(() => { setMenu(formatMenu) }, [hash])
 
   return (
-    <>
-      {lines.slice(1, -1)
-        .map(line => line.split('|'))
-        .filter(split => split.length === 2)
-        .map(({ [0]: filename}) => (
-          <button onClick={() => loadDiff(`curr/${filename.trim()}`)}>
-            {filename}
-          </button>
-        ))
-      }
-    </>
+    <Fragment>
+      {menu}
+    </Fragment>
   )
 }
 
+const PAGE_SIZE = 10
 function Frame() {
-  const { data, loadDiff } = useAPI()
+  const { data, load } = useAPI()
+  // as in pos in data.hashes
+  const [pos, setPos] = useState(PAGE_SIZE)
+
   const fadeStyle = useSpring({
     from: { opacity: 0.3 },
     to: { opacity: 1 },
@@ -69,24 +86,56 @@ function Frame() {
   })
 
   useEffect(() => {
-    // load some commits here
-    loadDiff('curr/')
     async function handleKey({ code }) {
-      console.log(code)
-      if (code === 'ArrowLeft') { 
-        await loadDiff('prev/')
+      if (code === 'ArrowLeft') {
+        setPos(prevPos => prevPos - 1)
       }
       if (code === 'ArrowRight') {
-        // todo: bound by number of commits
-        await loadDiff('next/')
+        setPos(prevPos => prevPos + 1)
       }
     }
     window?.addEventListener('keydown', handleKey)
-    // passive?
     return() => window?.removeEventListener('keydown', handleKey)
   }, [])
 
-  const lines = data.split('\n')
+  useEffect(() => {
+    console.log("[pos]", pos, data.hashes)
+    let pagePromise: Promise<string[]>;
+    if (!data.hashes.length) {
+      pagePromise = load.hashes('next', '')
+    }
+    if (pos < 0) {
+      pagePromise = load.hashes('prev', data.hashes[0])
+      setPos(PAGE_SIZE - 1)
+    }
+    if (pos === PAGE_SIZE) {
+      pagePromise = load.hashes('next', data.hashes[PAGE_SIZE - 1])
+      // caching would remove the second request I think will happen b/c of this line
+      setPos(0)
+    }
+    pagePromise?.then(hashes => load.diff(hashes[pos] || '', ''))
+    !pagePromise && load.diff(data.hashes[pos] || '', '')
+  }, [pos, data.hashes])
+
+  // ------- menu ---------
+  // doesn't update to the current hash for some reason
+  // just calling formatMenu for now
+  const formatMenu = () => {
+    return data.diff.split('\n')
+      .map(line => line.split('|'))
+      .map(parts => parts.length === 2 && parts[0].trim())
+      .map(filename => filename && (
+        <button onClick={() => load.diff(data.hashes[pos], filename)}>
+          {filename}
+        </button>
+      ))
+  }
+  const [menu, setMenu] = useState(formatMenu())
+
+  useEffect(() => { setMenu(formatMenu) }, [data.hashes, pos])
+  // ------- menu ---------
+
+  const lines = data.diff.split('\n')
   // rows and cols padded to avoid scrolling + wrapping
   const dims = {
     rows: lines.length + 1,
@@ -98,10 +147,11 @@ function Frame() {
       <animated.textarea 
         style={fadeStyle} 
         {...dims}
-        value={data} 
+        value={data.diff} 
         readOnly 
       />
-      <FrameMenu data={data}>
+      {/* Assumes --stat view is shown first */}
+      {formatMenu()}
     </Fragment>
   )
 }

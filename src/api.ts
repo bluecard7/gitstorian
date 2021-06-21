@@ -22,27 +22,28 @@ async function run(cmd: string): Promise<string> {
 const PAGE_SIZE = 10;
 const storeName = ".ripthebuild";
 
-class CommitReader {
-  async read(hash: string, filename: string): Promise<string> {
-    const defaults = `--oneline ${filename || "--stat"}`;
-    const fileOpt = filename && `-- ${filename}`;
-    return run(`git show ${defaults} ${hash} ${fileOpt}`);
-  }
-
-  // POST, with unread commits, maybe just last commit read?
-  bookmark() {
-    //console.log(`[PERSISTING]\n${data}`);
-    //Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
-  }
+export async function read(hash: string, filename: string): Promise<string> {
+  const defaults = `--oneline ${filename ? "" : "--stat"}`;
+  const fileOpt = filename ? `-- ${filename}` : "";
+  return run(`git show ${defaults} ${hash} ${fileOpt}`);
 }
 
+// POST, with unread commits, maybe just last commit read?
+function bookmark() {
+  //console.log(`[PERSISTING]\n${data}`);
+  //Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
+}
+
+// get rid of the class?
 class CommitStream {
   firstCommit: string;
   constructor() {
     this.firstCommit = "";
   }
 
-  async flip(order: string, hash: string): Promise<string[]> {
+  // flipping pages of commits mixes with the concept of reading
+  // a commit
+  flip(order: string, hash: string): Promise<string[]> {
     if (!hash) return this.initialPage();
     if (order === "prev") return this.prevPage(hash);
     return this.nextPage(hash);
@@ -72,6 +73,7 @@ class CommitStream {
   }
 
   async nextPage(from: string): Promise<string[]> {
+    // THINK this returns empty if from === HEAD
     const range = from ? `${from}..` : "HEAD";
     // Need to use head instead of just -n in this case
     // because reverse is applied after cutting in rev-list
@@ -107,7 +109,5 @@ export function setup(repoPath: string): {
   return { success, errMsg };
 }
 
-const commitReader = new CommitReader();
 const commitStream = new CommitStream();
-export const { read, bookmark } = commitReader;
-export const { flip } = commitStream;
+export const flip = (hash: string, filename: string) => commitStream.flip(hash, filename)
