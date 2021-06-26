@@ -3,6 +3,10 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+function lines(text: string) {
+  return text.split("\n").filter(Boolean);
+}
+
 async function run(cmd: string): Promise<string> {
   console.log("[RUNNING]:", cmd);
   const p = Deno.run({
@@ -22,10 +26,11 @@ async function run(cmd: string): Promise<string> {
 const PAGE_SIZE = 10;
 const storeName = ".ripthebuild";
 
-export async function read(hash: string, filename: string): Promise<string> {
+export async function read(hash: string, filename: string): Promise<string[]> {
   const defaults = `--oneline ${filename ? "" : "--stat"}`;
   const fileOpt = filename ? `-- ${filename}` : "";
-  return run(`git show ${defaults} ${hash} ${fileOpt}`);
+  const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
+  return lines(await run(cmd));
 }
 
 // POST, with unread commits, maybe just last commit read?
@@ -34,52 +39,44 @@ function bookmark() {
   //Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
 }
 
-// get rid of the class?
-class CommitStream {
-  firstCommit: string;
-  constructor() {
-    this.firstCommit = "";
-  }
+let firstCommit = "";
+// flipping pages of commits mixes with the concept of reading
+// a commit
+export function flip(order: string, hash: string): Promise<string[]> {
+  if (!hash) return initialPage();
+  if (order === "prev") return prevPage(hash);
+  return nextPage(hash);
+}
 
-  // flipping pages of commits mixes with the concept of reading
-  // a commit
-  flip(order: string, hash: string): Promise<string[]> {
-    if (!hash) return this.initialPage();
-    if (order === "prev") return this.prevPage(hash);
-    return this.nextPage(hash);
+async function initialPage(): Promise<string[]> {
+  const initialPage = await nextPage("");
+  // need this to perform prev
+  firstCommit = initialPage[0];
+  if (existsSync(storeName)) {
+    // todo: verify that this is executed
+    const blob = decoder.decode(Deno.readFileSync(storeName));
+    return lines(blob);
   }
+  return initialPage;
+}
 
-  async initialPage(): Promise<string[]> {
-    const initialPage = await this.nextPage("");
-    // need this to perform prev
-    this.firstCommit = initialPage[0];
-    if (existsSync(storeName)) {
-      // todo: verify that this is executed
-      const blob = decoder.decode(Deno.readFileSync(storeName));
-      return blob.split("\n").filter(Boolean);
-    }
-    return initialPage;
-  }
+async function prevPage(from: string): Promise<string[]> {
+  const range = `${firstCommit} ${from}`;
+  // Queries for all commits b/n first commit and from
+  // inclusive, gets only the first PAGE_SIZE + 1 commits
+  const cmd = `git rev-list ${range} -n${PAGE_SIZE + 1}`;
+  return lines(await run(cmd))
+    .reverse()
+    .slice(0, -1);
+}
 
-  async prevPage(from: string): Promise<string[]> {
-    const range = `${this.firstCommit} ${from}`;
-    // Queries for all commits b/n first commit and from
-    // inclusive, gets only the first PAGE_SIZE + 1 commits
-    const cmd = `git rev-list ${range} -n${PAGE_SIZE + 1}`;
-    return (await run(cmd)).split("\n")
-      .filter(Boolean)
-      .reverse()
-      .slice(0, -1);
-  }
-
-  async nextPage(from: string): Promise<string[]> {
-    // THINK this returns empty if from === HEAD
-    const range = from ? `${from}..` : "HEAD";
-    // Need to use head instead of just -n in this case
-    // because reverse is applied after cutting in rev-list
-    const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
-    return (await run(cmd)).split("\n").filter(Boolean);
-  }
+async function nextPage(from: string): Promise<string[]> {
+  // THINK this returns empty if from === HEAD
+  const range = from ? `${from}..` : "HEAD";
+  // Need to use head instead of just -n in this case
+  // because reverse is applied after cutting in rev-list
+  const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
+  return lines(await run(cmd));
 }
 
 export function setup(repoPath: string): {
@@ -108,6 +105,3 @@ export function setup(repoPath: string): {
   }
   return { success, errMsg };
 }
-
-const commitStream = new CommitStream();
-export const flip = (hash: string, filename: string) => commitStream.flip(hash, filename)
