@@ -1,7 +1,2 @@
-deno test \
-  --unstable \
-  --allow-read \
-  --allow-write \
-  --fail-fast \
+deno test --unstable --allow-read --allow-run --allow-write src
   # --coverage
-  src

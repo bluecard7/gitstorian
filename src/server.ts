@@ -1,5 +1,5 @@
 import * as http from "https://deno.land/std@0.97.0/http/server.ts";
-import { flip, read, setup } from "./api.ts"; // maybe rename to lib?
+import { flip, readHash, setup } from "./api.ts"; // maybe rename to lib?
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const repoPath = Deno.args[0];
@@ -25,7 +25,7 @@ async function handle(req: http.ServerRequest): Promise<http.Response> {
   if (match(req, "GET", "/commits/")) {
     const path = req.url.split("/").slice(2);
     const [order, hash] = path;
-    const body = JSON.stringify(await flip(order || "", hash || ""));
+    const body = JSON.stringify(await flip(order, hash));
     return { status: 200, body };
   }
   // if /diff/<hash>, then return file diff of that hash
@@ -33,7 +33,7 @@ async function handle(req: http.ServerRequest): Promise<http.Response> {
   if (match(req, "GET", "/diffs/")) {
     const path = req.url.split("/").slice(2);
     const [hash, filename] = path;
-    return { status: 200, body: await read(hash || "", filename || "") };
+    return { status: 200, body: await readHash(hash, filename) };
   }
   return { status: 404, body: "unknown path" };
 }

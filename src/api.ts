@@ -26,7 +26,10 @@ async function run(cmd: string): Promise<string> {
 const PAGE_SIZE = 10;
 const storeName = ".ripthebuild";
 
-export async function read(hash: string, filename: string): Promise<string[]> {
+export async function readHash(
+  hash: string = "",
+  filename: string = "",
+): Promise<string[]> {
   const defaults = `--oneline ${filename ? "" : "--stat"}`;
   const fileOpt = filename ? `-- ${filename}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
@@ -42,7 +45,7 @@ function bookmark() {
 let firstCommit = "";
 // flipping pages of commits mixes with the concept of reading
 // a commit
-export function flip(order: string, hash: string): Promise<string[]> {
+export function flip(order: string = "", hash: string = ""): Promise<string[]> {
   if (!hash) return initialPage();
   if (order === "prev") return prevPage(hash);
   return nextPage(hash);

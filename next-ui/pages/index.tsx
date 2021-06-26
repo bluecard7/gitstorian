@@ -9,19 +9,22 @@ function useAPI() {
   const [diff, setDiff] = useState("")
   const baseURL = 'http://localhost:8081'
 
-  async function loadHashes(order: string, hash: string): [] {
+  async function loadHashes(order: string, hash: string): Promise<string[]> {
     const data = await (
       fetch(`${baseURL}/commits/${order}/${hash}`)
         .then(data => data)
         .catch(err => ({ text: () => err.message }))
     )
-    const page = data.ok && await data.json()
-    data.ok && setHashes(page)
-    return page || []
+    const page = data.ok ? (await data.json()) : []
+    if (page.length) {
+      setHashes(page)
+      return page
+    }
+    return hashes;
   }
 
   // if TypeError, abort all requests after?
-  async function loadDiff(hash: string, filename: string): string {
+  async function loadDiff(hash: string, filename: string): Promise<string> {
     // if caching, return if already requested
     const data = await (
         fetch(`${baseURL}/diffs/${hash}/${filename}`)
