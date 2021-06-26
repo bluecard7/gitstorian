@@ -132,7 +132,7 @@ function Frame() {
   }
   const [menu, setMenu] = useState(formatMenu())
 
-  useEffect(() => { setMenu(formatMenu) }, [data.hashes, pos])
+  useEffect(() => { setMenu(formatMenu) }, [pos])
   // ------- menu ---------
 
   const lines = data.diff.split('\n')
@@ -151,7 +151,7 @@ function Frame() {
         readOnly 
       />
       {/* Assumes --stat view is shown first */}
-      {formatMenu()}
+      {menu}
     </Fragment>
   )
 }
