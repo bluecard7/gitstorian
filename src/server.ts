@@ -3,7 +3,7 @@ import { flip, readHash, setup } from "./api.ts"; // maybe rename to lib?
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const repoPath = Deno.args[0];
-const { success, errMsg } = setup(repoPath);
+const { success, errMsg } = await setup(repoPath);
 if (!success) {
   console.log(errMsg);
   Deno.exit(1);

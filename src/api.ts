@@ -1,11 +1,10 @@
+// Git version used here is 2.25.1
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function lines(text: string) {
-  return text.split("\n").filter(Boolean);
-}
+const lines = (text: string) => text.split("\n").filter(Boolean);
 
 async function run(cmd: string): Promise<string> {
   console.log("[RUNNING]:", cmd);
@@ -26,72 +25,70 @@ async function run(cmd: string): Promise<string> {
 const PAGE_SIZE = 10;
 const storeName = ".ripthebuild";
 
-export async function readHash(
-  hash: string = "",
-  filename: string = "",
-): Promise<string[]> {
-  const defaults = `--oneline ${filename ? "" : "--stat"}`;
-  const fileOpt = filename ? `-- ${filename}` : "";
+interface DiffOptions {
+  hash?: string;
+  // handling only files for now
+  path?: string;
+}
+
+export async function readHash({ hash, path }: DiffOptions): Promise<string[]> {
+  const defaults = `--oneline ${path ? "" : "--stat"}`;
+  const fileOpt = path ? `-- ${path}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
   return lines(await run(cmd));
 }
 
-// POST, with unread commits, maybe just last commit read?
-function bookmark() {
-  //console.log(`[PERSISTING]\n${data}`);
-  //Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
+export function bookmark(page: string[]) {
+  console.log('[PERSISTING]:', page);
+  Deno.writeFileSync(storeName, encoder.encode(page.join('\n')), { create: true });
 }
 
-let firstCommit = "";
 // flipping pages of commits mixes with the concept of reading
 // a commit
-export function flip(order: string = "", hash: string = ""): Promise<string[]> {
+export function flip(
+  order: string = "",
+  opts: DiffOptions = {},
+): Promise<string[]> {
   if (!order) return initialPage();
-  if (order === "prev") return prevPage(hash);
-  return nextPage(hash);
+  if (order === "prev") return prevPage(opts);
+  return nextPage(opts);
 }
 
 // initial page is the page starting from the bookmark or
 // the first page if the bookmark doesn't exist
 async function initialPage(): Promise<string[]> {
-  const initialPage = await nextPage();
-  // need this to perform prev
-  firstCommit = initialPage[0];
   if (existsSync(storeName)) {
-    // todo: verify that this is executed
     const blob = decoder.decode(Deno.readFileSync(storeName));
     return lines(blob);
   }
-  return initialPage;
+  return await nextPage({});
 }
 
-async function prevPage(from: string = ""): Promise<string[]> {
-  const cmd = `git rev-list ${from || "HEAD"} -n${PAGE_SIZE + 1}`;
+async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
+  const cmd = `git rev-list ${hash || "HEAD"} ${path || ""} -n${PAGE_SIZE + 1}`;
   // invariant is the commit from which the prev page is
   // grabbed from is included in the output. But this isn't
   // true when going from the first commit to the last page -
-  // the first commit isn't after the last commit in git. So, 
+  // the first commit isn't after the last commit in git. So,
   // need to remove the first commit of the last page in that case.
-  const step = from ? [0, -1] : [1]
-  const page = lines(await run(cmd))
-    .reverse()
-    .slice(...step);
-  return page.length ? page : prevPage();
+  const step = hash ? [0, -1] : [1];
+  const page = lines(await run(cmd)).reverse().slice(...step);
+  return page.length ? page : prevPage({});
 }
 
-async function nextPage(from: string = ""): Promise<string[]> {
-  const range = from ? `${from}..` : "HEAD";
+async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
+  const range = hash ? `${hash}..` : "HEAD";
   // Need to use head instead of -n in this case
   // because reverse is applied after cutting
-  const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
-  const page = lines(await run(cmd))
-  return page.length ? page : nextPage();
+  const cmd = `git rev-list --reverse ${range} ${path || ""}`;
+  const page = lines(await run(`${cmd} | head -n${PAGE_SIZE}`));
+  return page.length ? page : nextPage({});
 }
 
-export function setup(repoPath: string): {
+export async function setup(repoPath: string): Promise<{
   success: boolean;
   errMsg: string;
-} {
+}> {
   let success = false;
   let errMsg = "";
   try {
@@ -99,6 +96,10 @@ export function setup(repoPath: string): {
     // check if its a git repo
     if (!existsSync(".git")) {
       return { success, errMsg: `${Deno.cwd()} is not a git repo` };
+    }
+    const count = await run("git rev-list --count HEAD");
+    if (!parseInt(count, 10)) {
+      return { success, errMsg: `${Deno.cwd()} has no commits` };
     }
     success = true;
   } catch (err) {
