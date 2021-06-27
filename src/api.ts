@@ -46,13 +46,15 @@ let firstCommit = "";
 // flipping pages of commits mixes with the concept of reading
 // a commit
 export function flip(order: string = "", hash: string = ""): Promise<string[]> {
-  if (!hash) return initialPage();
+  if (!order) return initialPage();
   if (order === "prev") return prevPage(hash);
   return nextPage(hash);
 }
 
+// initial page is the page starting from the bookmark or
+// the first page if the bookmark doesn't exist
 async function initialPage(): Promise<string[]> {
-  const initialPage = await nextPage("");
+  const initialPage = await nextPage();
   // need this to perform prev
   firstCommit = initialPage[0];
   if (existsSync(storeName)) {
@@ -63,23 +65,27 @@ async function initialPage(): Promise<string[]> {
   return initialPage;
 }
 
-async function prevPage(from: string): Promise<string[]> {
-  const range = `${firstCommit} ${from}`;
-  // Queries for all commits b/n first commit and from
-  // inclusive, gets only the first PAGE_SIZE + 1 commits
-  const cmd = `git rev-list ${range} -n${PAGE_SIZE + 1}`;
-  return lines(await run(cmd))
+async function prevPage(from: string = ""): Promise<string[]> {
+  const cmd = `git rev-list ${from || "HEAD"} -n${PAGE_SIZE + 1}`;
+  // invariant is the commit from which the prev page is
+  // grabbed from is included in the output. But this isn't
+  // true when going from the first commit to the last page -
+  // the first commit isn't after the last commit in git. So, 
+  // need to remove the first commit of the last page in that case.
+  const step = from ? [0, -1] : [1]
+  const page = lines(await run(cmd))
     .reverse()
-    .slice(0, -1);
+    .slice(...step);
+  return page.length ? page : prevPage();
 }
 
-async function nextPage(from: string): Promise<string[]> {
-  // THINK this returns empty if from === HEAD
+async function nextPage(from: string = ""): Promise<string[]> {
   const range = from ? `${from}..` : "HEAD";
-  // Need to use head instead of just -n in this case
-  // because reverse is applied after cutting in rev-list
+  // Need to use head instead of -n in this case
+  // because reverse is applied after cutting
   const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
-  return lines(await run(cmd));
+  const page = lines(await run(cmd))
+  return page.length ? page : nextPage();
 }
 
 export function setup(repoPath: string): {
