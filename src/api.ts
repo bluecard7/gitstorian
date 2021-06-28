@@ -3,8 +3,15 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
 const lines = (text: string) => text.split("\n").filter(Boolean);
+const PAGE_SIZE = 10;
+const storeName = ".ripthebuild";
+
+interface DiffOptions {
+  hash?: string;
+  // handling only files for now
+  path?: string;
+}
 
 async function run(cmd: string): Promise<string> {
   console.log("[RUNNING]:", cmd);
@@ -20,18 +27,7 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
-// functions that format args to the correct git command
-// a "page" is 10 commit hashes
-const PAGE_SIZE = 10;
-const storeName = ".ripthebuild";
-
-interface DiffOptions {
-  hash?: string;
-  // handling only files for now
-  path?: string;
-}
-
-export async function readHash({ hash, path }: DiffOptions): Promise<string[]> {
+export async function read({ hash, path }: DiffOptions): Promise<string[]> {
   const defaults = `--oneline ${path ? "" : "--stat"}`;
   const fileOpt = path ? `-- ${path}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;

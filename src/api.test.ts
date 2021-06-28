@@ -2,20 +2,23 @@ import {
   assert,
   assertObjectMatch,
 } from "https://deno.land/std@0.97.0/testing/asserts.ts";
+import { existsSync } from "https://deno.land/std/fs/mod.ts";
+import { bookmark, flip, read, setup } from "./api.ts";
 
-import { flip, readHash, setup } from "./api.ts";
-
-// more integration testy by nature
-// use this repo as the fixture
+// use itself as the fixture
 assert(Deno.cwd().endsWith("ripthebuild"));
-// just do it in every test?
-const { success, errMsg } = await setup(Deno.cwd());
+// just assumes it succeeds
+await setup(Deno.cwd());
 
 // todo: test that setup fails if done in repo w/ 0 commits
 // Or really just tests involving bookmarks
-Deno.test("1st flip gets bookmark, if cached", async () => {
-  // involves setup
-  assert(false);
+Deno.test("bookmark caches page", async () => {
+  const usedPage = (await flip()).slice(3);
+  // simulate partial page consumption + bookmarking
+  bookmark(usedPage);
+  assert(existsSync(".ripthebuild"));
+  assertObjectMatch({ res: await flip() }, { res: usedPage });
+  Deno.removeSync(".ripthebuild");
 });
 
 // should flips and reads fail if no repo setup?
@@ -58,7 +61,7 @@ Deno.test("flipping for specific file", async () => {
   const path = "src/api.ts";
   const page = await flip("next", { path });
   const diffStats = await Promise.all(
-    page.map((hash) => readHash({ hash })),
+    page.map((hash) => read({ hash })),
   );
   assert(
     diffStats.map(affectedFiles).every((names) =>
@@ -68,7 +71,7 @@ Deno.test("flipping for specific file", async () => {
 
   // just shows that a file diff is generated
   const fileDiffs = await Promise.all(
-    page.map((hash) => readHash({ hash, path })),
+    page.map((hash) => read({ hash, path })),
   );
   assert(fileDiffs.every(
     (lines) =>
