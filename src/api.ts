@@ -7,7 +7,7 @@ const lines = (text: string) => text.split("\n").filter(Boolean);
 const PAGE_SIZE = 10;
 const storeName = ".ripthebuild";
 
-interface DiffOptions {
+export interface DiffOptions {
   hash?: string;
   // handling only files for now
   path?: string;
