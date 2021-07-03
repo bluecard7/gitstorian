@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.97.0/http/server.ts";
 import { setup } from "./api.ts";
-import { handle } from './handler.ts'
+import { handle } from "./handler.ts";
 
 const repoPath = Deno.args[0];
 const { success, errMsg } = await setup(repoPath);

@@ -35,8 +35,10 @@ export async function read({ hash, path }: DiffOptions): Promise<string[]> {
 }
 
 export function bookmark(page: string[]) {
-  console.log('[PERSISTING]:', page);
-  Deno.writeFileSync(storeName, encoder.encode(page.join('\n')), { create: true });
+  console.log("[PERSISTING]:", page);
+  Deno.writeFileSync(storeName, encoder.encode(page.join("\n")), {
+    create: true,
+  });
 }
 
 // flipping pages of commits mixes with the concept of reading

@@ -2,7 +2,7 @@ import {
   Response,
   ServerRequest,
 } from "https://deno.land/std@0.97.0/http/server.ts";
-import { bookmark, flip, read, DiffOptions } from "./api.ts";
+import { bookmark, DiffOptions, flip, read } from "./api.ts";
 
 function match(
   { method, url }: ServerRequest,
@@ -35,24 +35,23 @@ export async function handle(
     };
   }
   const { read, flip, bookmark } = handlers;
-  // if /diff/<hash>, then return file diff of that hash
-  // if /diff/<hash>/<file>, then return diff of that file in that hash
-  if (match(req, "GET", "/diffs/")) {
+  if (match(req, "GET", "/diffs")) {
     const path = req.url.split("/").slice(2);
-    const [hash, file] = path;
+    const [hash, ...file] = path;
     if (!hash) {
-      return { status: 400, body: "can't read without a hash" }
+      return { status: 400, body: "can't read without a hash" };
     }
-    const body = JSON.stringify(await read({ hash, path: file }));
+    const body = JSON.stringify(await read({ hash, path: file.join("/") }));
     return { status: 200, body };
   }
 
-  // path: /commit/<next|prev>/<hash>
-  if (match(req, "GET", "/commits/")) {
+  if (match(req, "GET", "/commits")) {
     const path = req.url.split("/").slice(2);
     // todo: allow filename to be provided
-    const [order, hash] = path;
-    const body = JSON.stringify(await flip(order, { hash }));
+    const [order, hash, ...file] = path;
+    const body = JSON.stringify(
+      await flip(order, { hash, path: file.join("/") }),
+    );
     return { status: 200, body };
   }
 

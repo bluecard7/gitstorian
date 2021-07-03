@@ -9,16 +9,13 @@ import { BufReader } from "https://deno.land/std@0.97.0/io/bufio.ts";
 import { Buffer } from "https://deno.land/std@0.97.0/io/buffer.ts";
 import { handle } from "./handler.ts";
 
-// Headers is in unexpected format
 Deno.test("CORS", async () => {
   const req = new ServerRequest();
-  req.headers = new Headers({
-    "Origin": "http://localhost:3000",
-  });
   req.url = "";
   req.method = "OPTIONS";
   const res = await handle(req);
   assert(res.status === 204);
+  // iterator b/c of assrtObjectMatch's quirks
   assertObjectMatch(
     { headers: res.headers },
     {
@@ -27,28 +24,27 @@ Deno.test("CORS", async () => {
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "86400",
-      }),
+      })[Symbol.iterator](),
     },
   );
 });
 
-// todo: read arguments
 function mockRead() {
   mockRead.calls.push(arguments);
   return Promise.resolve([]);
 }
-mockRead.calls = <any[]>[]
+mockRead.calls = <any[]> [];
 
 function mockFlip() {
   mockFlip.calls.push(arguments);
   return Promise.resolve([]);
 }
-mockFlip.calls = <any[]>[]
+mockFlip.calls = <any[]> [];
 
 function mockBookmark() {
   mockBookmark.calls.push(arguments);
 }
-mockBookmark.calls = <any[]>[]
+mockBookmark.calls = <any[]> [];
 
 const resetCalls = () =>
   [mockRead, mockFlip, mockBookmark].forEach((mock) => mock.calls = []);
@@ -61,54 +57,94 @@ const mockHandlers = {
   bookmark: mockBookmark,
 };
 
-Deno.test("/diffs/ - no hash, no file", async () => {
+Deno.test("/diffs", async () => {
   const req = new ServerRequest();
-  req.url = "/diffs/"
-  req.method = "GET"
-  resetCalls()
-  const res = await handle(req, mockHandlers)
-  assert(res.status === 400)
-  assertObjectMatch({ msg: res.body }, { msg: "can't read without a hash" })
-  assertObjectMatch({ count: callCounts() }, { count: [0, 0, 0] })
+  req.url = "/diffs";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assert(res.status === 400);
+  assertObjectMatch({ msg: res.body }, { msg: "can't read without a hash" });
+  assertObjectMatch({ count: callCounts() }, { count: [0, 0, 0] });
 });
 
-Deno.test("/diffs/ - hash, no file", async () => {
+Deno.test("/diffs/<hash>", async () => {
   const req = new ServerRequest();
-  req.url = "/diffs/deadbeef" // what happen w/ leading forward slash
-  req.method = "GET"
-  resetCalls()
-  const res = await handle(req, mockHandlers)
-  assert(false)
+  req.url = "/diffs/deadbeef";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [1, 0, 0] });
+  assertObjectMatch(
+    { arg: [...mockRead.calls[0]] },
+    { arg: [{ hash: "deadbeef" }] },
+  );
 });
 
-Deno.test("/diffs/ - hash and file", async () => {
+Deno.test("/diffs/<hash>/<file>", async () => {
   const req = new ServerRequest();
-  req.url = "/diffs/deadbeef/" // what happen w/ leading forward slash
-  req.method = "GET"
-  resetCalls()
-  const res = await handle(req, mockHandlers)
-  assert(false)
+  req.url = "/diffs/deadbeef/path/to/file";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [1, 0, 0] });
+  assertObjectMatch(
+    { arg: [...mockRead.calls[0]] },
+    { arg: [{ hash: "deadbeef", path: "path/to/file" }] },
+  );
 });
 
-Deno.test("/commits/ - no order, no hash", async () => {
+Deno.test("/commits", async () => {
   const req = new ServerRequest();
-  req.url = "/commits/"
-  req.method = "GET"
-  assert(false)
+  req.url = "/commits";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [0, 1, 0] });
+  assertObjectMatch(
+    { arg: [...mockFlip.calls[0]] },
+    { arg: [undefined, {}] },
+  );
 });
 
-Deno.test("/commits/ - order, no hash", async () => {
+Deno.test("/commits/<order>", async () => {
   const req = new ServerRequest();
-  req.url = "/commits/prev/" // leading slash or nah?
-  req.method = "GET"
-  assert(false)
+  req.url = "/commits/prev";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [0, 1, 0] });
+  assertObjectMatch(
+    { arg: [...mockFlip.calls[0]] },
+    { arg: ["prev", {}] },
+  );
 });
 
-Deno.test("/commits/ - order and hash", async () => {
+// what happens when /commit//hash?
+Deno.test("/commits/<order>/<hash>", async () => {
   const req = new ServerRequest();
-  req.url = "/commits/prev/deadbeef"
-  req.method = "GET"
-  assert(false)
+  req.url = "/commits/prev/deadbeef";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [0, 1, 0] });
+  assertObjectMatch(
+    { arg: [...mockFlip.calls[0]] },
+    { arg: ["prev", { hash: "deadbeef" }] },
+  );
+});
+
+Deno.test("/commits/<order>/<hash>/<path>", async () => {
+  const req = new ServerRequest();
+  req.url = "/commits/prev/deadbeef/path/to/a/file";
+  req.method = "GET";
+  resetCalls();
+  const res = await handle(req, mockHandlers);
+  assertObjectMatch({ count: callCounts() }, { count: [0, 1, 0] });
+  assertObjectMatch(
+    { arg: [...mockFlip.calls[0]] },
+    { arg: ["prev", { hash: "deadbeef", path: "path/to/a/file" }] },
+  );
 });
 
 Deno.test("/bookmark", async () => {
@@ -123,16 +159,22 @@ Deno.test("/bookmark", async () => {
   const buf = new Buffer(new TextEncoder().encode(data));
   req.r = new BufReader(buf);
 
-  resetCalls()
+  resetCalls();
   const res = await handle(req, mockHandlers);
   assert(res.status === 200);
-  assertObjectMatch({ counts: callCounts() }, { counts: [0, 0, 1] })
+  assertObjectMatch({ counts: callCounts() }, { counts: [0, 0, 1] });
+  // assertObjectMatch is inconsistent in how it treats
+  // objects and arrays, so doing this to compare atm.
+  assertObjectMatch(
+    { arg: { ...mockBookmark.calls[0][0] } },
+    { arg: { ...["hash1", "hash2", "hash3"] } },
+  );
 });
 
 Deno.test("unknown path", async () => {
-  resetCalls()
-  const res = await handle(new ServerRequest(), mockHandlers)
+  resetCalls();
+  const res = await handle(new ServerRequest(), mockHandlers);
   assert(res.status === 404);
-  assertObjectMatch({ counts: callCounts() }, { counts: [0, 0, 0] })
-  assertObjectMatch({ msg: res.body }, { msg: "unknown path" }) 
+  assertObjectMatch({ counts: callCounts() }, { counts: [0, 0, 0] });
+  assertObjectMatch({ msg: res.body }, { msg: "unknown path" });
 });
