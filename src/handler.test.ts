@@ -87,10 +87,18 @@ Deno.test("/diffs/<hash>/<file>", async () => {
   req.method = "GET";
   resetCalls();
   const res = await handle(req, mockHandlers);
-  assertObjectMatch({ count: callCounts() }, { count: [1, 0, 0] });
+  assertObjectMatch({ count: callCounts() }, { count: [2, 0, 0] });
+  // need to destructure to rm array details
+  // like length, Symbol.iterator, etc
   assertObjectMatch(
-    { arg: [...mockRead.calls[0]] },
-    { arg: [{ hash: "deadbeef", path: "path/to/file" }] },
+    { arg: [
+      ...mockRead.calls[0],
+      ...mockRead.calls[1],
+    ]},
+    { arg: [
+      { hash: "deadbeef" },
+      { hash: "deadbeef", path: "path/to/file" },
+    ] },
   );
 });
 

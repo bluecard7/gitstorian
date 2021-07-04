@@ -18,6 +18,14 @@ interface Handlers {
   bookmark: (page: string[]) => void;
 }
 
+function formatPathMenu(statDiff: string[]): string[] {
+  return statDiff.map(line => line.split('|'))
+    .reduce((acc, parts) => {
+      parts.length === 2 && acc.push(parts[0].trim())
+      return acc
+    }, [])
+}
+
 export async function handle(
   req: ServerRequest,
   handlers: Handlers = { read, flip, bookmark },
@@ -41,10 +49,17 @@ export async function handle(
     if (!hash) {
       return { status: 400, body: "can't read without a hash" };
     }
-    const body = JSON.stringify(await read({ hash, path: file.join("/") }));
-    return { status: 200, body };
+    const statDiff = await read({ hash })
+    return { 
+      status: 200, 
+      body: JSON.stringify({
+        pathMenu: formatPathMenu(statDiff),
+        diff: file.length 
+          ? (await read({ hash, path: file.join("/") }))
+          : statDiff,
+      })
+    };
   }
-
   if (match(req, "GET", "/commits")) {
     const path = req.url.split("/").slice(2);
     // todo: allow filename to be provided
@@ -54,7 +69,6 @@ export async function handle(
     );
     return { status: 200, body };
   }
-
   if (match(req, "POST", "/bookmark")) {
     const raw = await Deno.readAll(req.body);
     const page = JSON.parse(new TextDecoder().decode(raw));

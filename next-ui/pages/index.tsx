@@ -71,13 +71,6 @@ function useCommits() {
   return { hash: hashes[pos] }
 }
 
-/*function formatMenu(diff) {
-  return diff.split('\n')
-    .map(line => line.split('|'))
-    .map(parts => parts.length === 2 && parts[0].trim())
-    .filter(Boolean)
-}*/
-
 function useDiff() {
   const [pathMenu, setMenu] = useState([])
   const [pos, setPos] = useState(0)

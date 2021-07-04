@@ -11,7 +11,6 @@ assert(Deno.cwd().endsWith("ripthebuild"));
 await setup(Deno.cwd());
 
 // todo: test that setup fails if done in repo w/ 0 commits
-// Or really just tests involving bookmarks
 Deno.test("bookmark caches page", async () => {
   const usedPage = (await flip()).slice(3);
   // simulate partial page consumption + bookmarking
@@ -49,26 +48,24 @@ Deno.test("page 1 is next of last page", async () => {
   );
 });
 
-// Should the menu be the server's responsibility?
-const affectedFiles = (lines: string[]) =>
-  lines.map((line) => line.split("|"))
-    .reduce((acc, parts) => {
-      if (parts.length === 2) acc.push(parts[0].trim());
-      return acc;
-    }, []);
-
-Deno.test("flipping for specific file", async () => {
-  const path = "src/api.ts";
-  const page = await flip("next", { path });
-  const diffStats = await Promise.all(
+Deno.test("reading hash generates stat diff", async () => {
+  const page = await flip("next");
+  const statDiffs = await Promise.all(
     page.map((hash) => read({ hash })),
   );
-  assert(
-    diffStats.map(affectedFiles).every((names) =>
-      names.some((name) => name.includes(path))
-    ),
-  );
+  // shows affected paths in a commit hash
+  assert(statDiffs.every(
+    (lines) =>
+      lines.slice(1, -1).every(
+        (line) => line.split('|').length === 2
+      ),
+  ));
+});
 
+Deno.test("reading hash w/ path generates actual diff", async () => {
+  // hash is implied here (first page)
+  const path = "src/api.ts";
+  const page = await flip("next", { path });
   // just shows that a file diff is generated
   const fileDiffs = await Promise.all(
     page.map((hash) => read({ hash, path })),
