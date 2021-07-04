@@ -1,61 +1,110 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useSpring, animated } from 'react-spring'
+import { of, fromEvent } from 'rxjs'
+import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
 
-function useAPI() {
-  const [data, setData] = useState("")
-  const baseURL = 'http://localhost:8081'
-
-  // if TypeError, abort all requests after?
-  async function loadDiff(cmd: string) {
-    // if caching, return if already requested
-    const data = await (
-      fetch(`${baseURL}/commit/${cmd}`)
-        .then(data => data)
-        .catch(err => ({ text: () => err.message }))
-    )
-    // todo: response should have diff + files involved 
-    // await data.json()
-    const text = await data.text();
-    // if (data.ok) { 
-    //  would be nice to cache texts + avoid requests
-    //  but would need some semblance of hash order
-    //  and need to change api to:
-    //  - send block of hashes
-    //  - then client needs to specify hash to get diff
-    // }
-    setData(text.trim())
-  }
-  return { data, loadDiff };
+const baseURL = 'http://localhost:8081'
+const observeKeydown = () => fromEvent(document, 'keydown')
+  .pipe(
+    throttleTime(500),
+    map(e => e.code),
+    filter(Boolean),
+  )
+const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
+const fetchData = (pieces: string[]): Promise<Response> => {
+  console.log(urlify(pieces))
+  return fetch(urlify(pieces))
+    .then(data => data)
+    .catch(err => ({ text: () => err.message }))
 }
 
-// better if the API to be more hash orientated
-function FrameMenu({ hash, data }) {
-  const [menu, setMenu] = useState([])
+
+async function loadPage(
+  order: string = "", 
+  hash: string = "", 
+  path: string = "",
+): Promise<string[]> {
+  const res = await fetchData([baseURL, 'commits', order, hash, path])
+  return res.ok ? (await res.json()) : []
+}
+
+async function loadDiff(
+  hash: string = "", 
+  path: string = ""
+): Promise<{ diff: string[], menu: string[]}> {
+  const res = await fetchData([baseURL,'diffs', hash, path])
+  return res.json()
+}
+
+function useCommits(keydownObserver) {
+  const [hashes, setHashes] = useState([])
+  const [pos, setPos] = useState(0)
+  const [path, setPath] = useState("")
+  useEffect(() => {
+    // get the first page
+    loadPage("next").then(page => setHashes(page))
+    const subscription = keydownObserver.subscribe(code => {
+      // todo: need to check if page is empty or not
+      switch (code) {
+        case 'ArrowLeft':
+          0 < pos && setPos(old => old - 1)
+          pos === 0 && loadPage('prev', hashes[pos], path).then(page => {
+            setHashes([...page, ...hashes])
+            setPos(page.length - 1)
+          })
+          break
+        case 'ArrowRight':
+          const last = hashes.length - 1
+          pos < last && setPos(old => old + 1)
+          pos === last && loadPage('next', hashes[pos], path).then(page => {
+            setHashes([...hashes, ...page])
+            setPos(old => old + 1)
+          })
+      }
+    });
+    return subscription.unsubscribe
+  }, [])
+  // hash could be undefined
+  return { hash: hashes[pos], setPath }
+}
+
+function useDiff(keydownObserver) {
+  const [diff, setDiff] = useState([])
+  const [pathMenu, setMenu] = useState([])
+  const [pos, setPos] = useState(0)
+  const { hash, setPath } = useCommits(keydownObserver)
 
   useEffect(() => {
-    
-  }, [hash]) 
+    hash && loadDiff(hash, pathMenu[pos]).then(res => {
+        res.menu && setMenu(res.menu)
+        res.diff && setDiff(res.diff) 
+    })
+  }, [hash])
 
-  return (
-    <>
-      {lines.slice(1, -1)
-        .map(line => line.split('|'))
-        .filter(split => split.length === 2)
-        .map(({ [0]: filename}) => (
-          <button onClick={() => loadDiff(`curr/${filename.trim()}`)}>
-            {filename}
-          </button>
-        ))
+  useEffect(() => {
+    const subscription = keydownObserver.subscribe(code => {
+      switch (code) {
+        case 'ArrowUp':
+          return setPos(old => old + 1)
+        case 'ArrowDown':
+          return setPos(old => old - 1)
+        case 'Enter':
+          return setPath(pathMenu[pos] || "")
       }
-    </>
-  )
+    });
+    return subscription.unsubscribe
+  }, [])
+  // how to show which one is currently chosen?
+  // - text difference? aka add * to current chosen
+  return { diff, pathMenu }
 }
 
 function Frame() {
-  const { data, loadDiff } = useAPI()
+  const [keydownObserver, setObserver] = useState(of())
+  const { diff, pathMenu } = useDiff(keydownObserver);
   const fadeStyle = useSpring({
     from: { opacity: 0.3 },
     to: { opacity: 1 },
@@ -68,53 +117,39 @@ function Frame() {
     reset: true,
   })
 
-  useEffect(() => {
-    // load some commits here
-    loadDiff('curr/')
-    async function handleKey({ code }) {
-      console.log(code)
-      if (code === 'ArrowLeft') { 
-        await loadDiff('prev/')
-      }
-      if (code === 'ArrowRight') {
-        // todo: bound by number of commits
-        await loadDiff('next/')
-      }
-    }
-    window?.addEventListener('keydown', handleKey)
-    // passive?
-    return() => window?.removeEventListener('keydown', handleKey)
-  }, [])
+  useEffect(() => setObserver(observeKeydown()), [])
 
-  const lines = data.split('\n')
-  // rows and cols padded to avoid scrolling + wrapping
-  const dims = {
-    rows: lines.length + 1,
-    cols: Math.max(...lines.map(line => line.length)) + 5,
-  }
-
+  console.log("res", diff, pathMenu)
+  const longestLineLen = Math.max(...diff.map(line => line.length))
   return (
     <Fragment>
       <animated.textarea 
         style={fadeStyle} 
-        {...dims}
-        value={data} 
+        // rows and cols padded to avoid scrolling + wrapping
+        rows={diff.length + 1}
+        cols={longestLineLen + 5}
+        value={diff}
         readOnly 
       />
-      <FrameMenu data={data}>
+      {/* still allow a user to click on menu?
+          thinking it would fire a keydown event to trigger above
+          - throttle might be an issue though
+        */
+        pathMenu.map(path => (
+          <div>
+            {filename}
+          </div>
+        ))}
     </Fragment>
   )
 }
 
-export default function Home() {
+export default function Entry() {
   return (
     <div className={styles.container}>
       <Head>
-        <title>Create Next App</title>
-        <meta name="description" content="Generated by create next app" />
-        <link rel="icon" href="/favicon.ico" />
+        <title>ripthebuild</title>
       </Head>
-
       <main className={styles.main}>
         <Frame />
       </main>

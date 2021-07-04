@@ -1,15 +1,16 @@
+// Git version used here is 2.25.1
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const lines = (text: string) => text.split("\n").filter(Boolean);
+const PAGE_SIZE = 10;
+const storeName = ".ripthebuild";
 
-// <command> [filename?]
-function parse(line: string): {
-  cmd: string; // technically could be undefined too, need validation
-  filename: string | undefined;
-} {
-  const [cmd, filename] = line.split(" ");
-  return { cmd, filename };
+export interface DiffOptions {
+  hash?: string;
+  // handling only files for now
+  path?: string;
 }
 
 async function run(cmd: string): Promise<string> {
@@ -26,122 +27,66 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
-// functions that format args to the correct git command
-// a "page" is 10 commit hashes
-const PAGE_SIZE = 10;
-const gitCmds = {
-  diff(commit: string, filename: string): string {
-    let gitCmd = "show";
-    const defaults = `--oneline ${filename ? "" : "--stat"}`;
-    const fileOpt = filename ? `-- ${filename}` : "";
-    return `git ${gitCmd} ${defaults} ${commit} ${fileOpt}`;
-  },
-};
-
-class CommitCache {
-  pos: number;
-  cache: string[];
-  storeName: string;
-  firstCommit: string;
-
-  constructor() {
-    this.pos = 0;
-    this.cache = [];
-    this.storeName = ".ripthebuild";
-    this.firstCommit = "";
-  }
-
-  // Loads first commits from persisted state. If it doesn't
-  // exist, then fetch new commits from beginning.
-  async _loadInitialCommits(): Promise<string[]> {
-    const initialPage = await this.nextPage("");
-    // need this to perform prev
-    this.firstCommit = initialPage[0];
-    if (existsSync(this.storeName)) {
-      // todo: verify that this is executed
-      const blob = decoder.decode(Deno.readFileSync(this.storeName));
-      return blob.split("\n").filter(Boolean);
-    }
-    return initialPage;
-  }
-
-  async read(): Promise<string> {
-    if (this.cache.length === 0) {
-      this.cache = await this._loadInitialCommits();
-      this.pos = 0;
-    }
-    // prev out of range
-    if (this.pos < 0) {
-      if (this.firstCommit === this.cache[0]) {
-        this.pos = 0;
-        return this.firstCommit;
-      }
-      this.cache = await this.prevPage(this.cache[0]);
-      this.pos = this.cache.length - 1;
-    }
-    // next out of range
-    if (this.pos >= this.cache.length) {
-      const lastCommitPos = this.cache.length - 1;
-      const nextPage = await this.nextPage(this.cache[lastCommitPos]);
-      // or should this be cyclic?
-      // Prev on first goes to last commit
-      // next on last goes to first
-      if (!nextPage.length) return this.cache[lastCommitPos];
-      this.cache = nextPage;
-      this.pos = 0;
-    }
-    return this.cache[this.pos] || "";
-  }
-
-  async prevPage(from: string | undefined): Promise<string[]> {
-    const range = `${this.firstCommit} ${from}`;
-    // Queries for all commits b/n first commit and from
-    // inclusive, gets only the first PAGE_SIZE + 1 commits
-    const cmd = `git rev-list ${range} -n${PAGE_SIZE + 1}`;
-    return (await run(cmd)).split("\n")
-      .filter(Boolean)
-      .reverse()
-      .slice(0, -1);
-  }
-
-  async nextPage(from: string | undefined): Promise<string[]> {
-    const range = from ? `${from}..` : "HEAD";
-    // Need to use head instead of just -n in this case
-    // because reverse is applied after cutting in rev-list
-    const cmd = `git rev-list --reverse ${range} | head -n${PAGE_SIZE}`;
-    return (await run(cmd)).split("\n").filter(Boolean);
-  }
-
-  prev(): Promise<string> {
-    this.pos -= 1;
-    return this.read();
-  }
-
-  curr(): Promise<string> {
-    return this.read();
-  }
-
-  next(): Promise<string> {
-    this.pos += 1;
-    return this.read();
-  }
-
-  persist() {
-    const { pos, cache, storeName } = this;
-    const data = cache.slice(pos).join("\n");
-    console.log(`[PERSISTING]\n${data}`);
-    Deno.writeFileSync(storeName, encoder.encode(data), { create: true });
-  }
+export async function read({ hash, path }: DiffOptions): Promise<string[]> {
+  const defaults = `--oneline ${path ? "" : "--stat"}`;
+  const fileOpt = path ? `-- ${path}` : "";
+  const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
+  return lines(await run(cmd));
 }
 
-const commitCache = new CommitCache();
+export function bookmark(page: string[]) {
+  console.log("[PERSISTING]:", page);
+  Deno.writeFileSync(storeName, encoder.encode(page.join("\n")), {
+    create: true,
+  });
+}
 
-// todo: explicitly setup first - fail requests otherwise
-// don't like it uses folder server is run in by default
-export function setup(repoPath: string): {
+// flipping pages of commits mixes with the concept of reading
+// a commit
+export function flip(
+  order: string = "",
+  opts: DiffOptions = {},
+): Promise<string[]> {
+  if (!order) return initialPage();
+  if (order === "prev") return prevPage(opts);
+  return nextPage(opts);
+}
+
+// initial page is the page starting from the bookmark or
+// the first page if the bookmark doesn't exist
+async function initialPage(): Promise<string[]> {
+  if (existsSync(storeName)) {
+    const blob = decoder.decode(Deno.readFileSync(storeName));
+    return lines(blob);
+  }
+  return await nextPage({});
+}
+
+async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
+  const cmd = `git rev-list ${hash || "HEAD"} ${path || ""} -n${PAGE_SIZE + 1}`;
+  // invariant is the commit from which the prev page is
+  // grabbed from is included in the output. But this isn't
+  // true when going from the first commit to the last page -
+  // the first commit isn't after the last commit in git. So,
+  // need to remove the first commit of the last page in that case.
+  const step = hash ? [0, -1] : [1];
+  const page = lines(await run(cmd)).reverse().slice(...step);
+  return page.length ? page : prevPage({});
+}
+
+async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
+  const range = hash ? `${hash}..` : "HEAD";
+  // Need to use head instead of -n in this case
+  // because reverse is applied after cutting
+  const cmd = `git rev-list --reverse ${range} ${path || ""}`;
+  const page = lines(await run(`${cmd} | head -n${PAGE_SIZE}`));
+  return page.length ? page : nextPage({});
+}
+
+export async function setup(repoPath: string): Promise<{
   success: boolean;
   errMsg: string;
-} {
+}> {
   let success = false;
   let errMsg = "";
   try {
@@ -149,6 +94,10 @@ export function setup(repoPath: string): {
     // check if its a git repo
     if (!existsSync(".git")) {
       return { success, errMsg: `${Deno.cwd()} is not a git repo` };
+    }
+    const count = await run("git rev-list --count HEAD");
+    if (!parseInt(count, 10)) {
+      return { success, errMsg: `${Deno.cwd()} has no commits` };
     }
     success = true;
   } catch (err) {
@@ -164,17 +113,3 @@ export function setup(repoPath: string): {
   }
   return { success, errMsg };
 }
-
-export async function request(line: string): Promise<string> {
-  const { cmd, filename } = parse(line);
-  // default behavior is viewing current commit
-  let commit = await commitCache.curr();
-  if (cmd[0] === "p") commit = await commitCache.prev();
-  if (cmd[0] === "n") commit = await commitCache.next();
-  // need validation of input, any input results in current
-  // commit being viewed.
-  return run(gitCmds.diff(commit, filename || ""));
-}
-
-export const { persist } = commitCache;
-export const testExports = { commitCache, gitCmds };
