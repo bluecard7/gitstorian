@@ -2,24 +2,25 @@ import Head from 'next/head'
 import Image from 'next/image'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useSpring, animated } from 'react-spring'
-import { fromEvent } from 'rxjs'
+import { of, fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
 
 const baseURL = 'http://localhost:8081'
-const keydownObserver = fromEvent(document, 'keydown')
+const observeKeydown = () => fromEvent(document, 'keydown')
   .pipe(
     throttleTime(500),
     map(e => e.code),
     filter(Boolean),
   )
-
 const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
-function fetchData(pieces: string[]): Promise<Response> {
+const fetchData = (pieces: string[]): Promise<Response> => {
+  console.log(urlify(pieces))
   return fetch(urlify(pieces))
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
 }
+
 
 async function loadPage(
   order: string = "", 
@@ -33,73 +34,77 @@ async function loadPage(
 async function loadDiff(
   hash: string = "", 
   path: string = ""
-): Promise<{ diff: string, menu: string[]}> {
+): Promise<{ diff: string[], menu: string[]}> {
   const res = await fetchData([baseURL,'diffs', hash, path])
-  return data.json()
+  return res.json()
 }
 
-function useCommits() {
+function useCommits(keydownObserver) {
   const [hashes, setHashes] = useState([])
   const [pos, setPos] = useState(0)
+  const [path, setPath] = useState("")
   useEffect(() => {
+    // get the first page
+    loadPage("next").then(page => setHashes(page))
     const subscription = keydownObserver.subscribe(code => {
+      // todo: need to check if page is empty or not
       switch (code) {
         case 'ArrowLeft':
-          if (pos === 0) {
-            // instead of array, could try traversing a bin tree of hash pages
-            loadPage('prev', hashes[pos]).then(page => {
-              setHashes([...page, ...hashes])
-              setPos(old => old - 1)
-            })
-          }
-          return setPos(old => old - 1)
+          0 < pos && setPos(old => old - 1)
+          pos === 0 && loadPage('prev', hashes[pos], path).then(page => {
+            setHashes([...page, ...hashes])
+            setPos(page.length - 1)
+          })
+          break
         case 'ArrowRight':
-          if (pos + 1 === hashes.length) {
-            loadPage('next', hashes[pos]).then(page => {
-              setHashes([...hashes, ...page])
-              setPos(old => old + 1)
-            })
-          }
-          return setPos(old => old + 1)
+          const last = hashes.length - 1
+          pos < last && setPos(old => old + 1)
+          pos === last && loadPage('next', hashes[pos], path).then(page => {
+            setHashes([...hashes, ...page])
+            setPos(old => old + 1)
+          })
       }
     });
     return subscription.unsubscribe
   }, [])
-
-  // how do I provide a path to iterate on?
-  // how/when to trigger fetch in subscription?
-  return { hash: hashes[pos] }
+  // hash could be undefined
+  return { hash: hashes[pos], setPath }
 }
 
-function useDiff() {
+function useDiff(keydownObserver) {
+  const [diff, setDiff] = useState([])
   const [pathMenu, setMenu] = useState([])
   const [pos, setPos] = useState(0)
-  const { hash } = useCommits()
+  const { hash, setPath } = useCommits(keydownObserver)
+
+  useEffect(() => {
+    hash && loadDiff(hash, pathMenu[pos]).then(res => {
+        res.menu && setMenu(res.menu)
+        res.diff && setDiff(res.diff) 
+    })
+  }, [hash])
+
   useEffect(() => {
     const subscription = keydownObserver.subscribe(code => {
       switch (code) {
         case 'ArrowUp':
-          return setMenuPos(pos => pos + 1)
+          return setPos(old => old + 1)
         case 'ArrowDown':
-          return setMenuPos(pos => pos - 1)
+          return setPos(old => old - 1)
         case 'Enter':
-        // todo: provide the menu through backend response
-        // w/ the diff
-          return // loadDiff(hash, pathMenu[pos]).then(
-          // res => { setMenu(res.menu); setDiff(res.diff) }
-          // )
+          return setPath(pathMenu[pos] || "")
       }
     });
     return subscription.unsubscribe
   }, [])
-
   // how to show which one is currently chosen?
   // - text difference? aka add * to current chosen
   return { diff, pathMenu }
 }
 
 function Frame() {
-  const { diff, pathMenu } = useDiff();
+  const [keydownObserver, setObserver] = useState(of())
+  const { diff, pathMenu } = useDiff(keydownObserver);
   const fadeStyle = useSpring({
     from: { opacity: 0.3 },
     to: { opacity: 1 },
@@ -112,15 +117,16 @@ function Frame() {
     reset: true,
   })
 
-  const lines = diff.split('\n')
-  const longestLineLen = Math.max(...lines.map(line => line.length))
-  
+  useEffect(() => setObserver(observeKeydown()), [])
+
+  console.log("res", diff, pathMenu)
+  const longestLineLen = Math.max(...diff.map(line => line.length))
   return (
     <Fragment>
       <animated.textarea 
         style={fadeStyle} 
         // rows and cols padded to avoid scrolling + wrapping
-        rows={lines.length + 1}
+        rows={diff.length + 1}
         cols={longestLineLen + 5}
         value={diff}
         readOnly 
@@ -129,16 +135,16 @@ function Frame() {
           thinking it would fire a keydown event to trigger above
           - throttle might be an issue though
         */
-        menu.map(path => (
-          <button onClick={() => loadDiff(hash, filename)}>
+        pathMenu.map(path => (
+          <div>
             {filename}
-          </button>
+          </div>
         ))}
     </Fragment>
   )
 }
 
-export default () => {
+export default function Entry() {
   return (
     <div className={styles.container}>
       <Head>
