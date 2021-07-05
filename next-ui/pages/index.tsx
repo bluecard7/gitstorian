@@ -15,6 +15,7 @@ const observeKeydown = () => fromEvent(document, 'keydown')
   )
 const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
 const fetchData = (pieces: string[]): Promise<Response> => {
+  console.log(urlify(pieces))
   return fetch(urlify(pieces))
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
@@ -85,7 +86,6 @@ function useCommits() {
     });
     return subscription?.unsubscribe
   }, [])
-  // console.log(hashes, pos)
   return { hash: hashes.current[pos], setPath }
 }
 
@@ -95,7 +95,9 @@ function useDiff() {
   const [pos, setPos] = useState(0)
   const posRef = useRef(0)
   // setPath is bad name, more like specifyPage, narrowPage??
-  const { hash, setPath } = useCommits()
+  const { hash, setPath: setHashesPath } = useCommits()
+  
+  const [path, setPath] = useState("")
 
   function updatePos(newPos: number) {
     if (newPos < 0 || newPos === menu.current.length) return 
@@ -111,12 +113,12 @@ function useDiff() {
     // 
     // for now ignoring path
     // const path = selecting ? "" : menu.current[pos]
-    hash && loadDiff(hash).then(res => {
-        menu.current = res.pathMenu || []
+    hash && loadDiff(hash, path).then(res => {
+        !path && (menu.current = res.pathMenu || [])
         setDiff(res.diff)
-        updatePos(0)
+        !path && updatePos(0)
     })
-  }, [hash])
+  }, [hash, path])
 
   useEffect(() => {
     const subscription = observeKeydown().subscribe(code => {
@@ -127,24 +129,25 @@ function useDiff() {
         case 'ArrowDown':
           return updatePos(currPos + 1)
         case 'Enter':
-          // should set pages to only include this path
-          return setPath(menu.current[currPos] || "")
+          setPath(menu.current[currPos])
+          // todo: how to handle path-specific searches?
+          // - have a "confirm" that resets hashes to a new set of 
+          //  pages that only involve the specified path?
+          // - stack of searches?
+          return setHashesPath(menu.current[currPos] || "")
       }
     });
     return subscription?.unsubscribe
   }, [])
   console.log(menu.current[pos])
-  // how to show which one is currently chosen?
-  // - text difference? aka add * to current chosen
-  //
   // goin through menu cause animation to refresh, even though same diff
-  return { diff, menu: menu.current }
+  return { diff, menu: menu.current, menuPos: posRef.current }
 }
 
 function Frame() {
-  const { diff, menu } = useDiff();
+  const { diff, menu, menuPos } = useDiff();
   const fadeStyle = useSpring({
-    from: { opacity: 0.3 },
+    from: { opacity: 0.5 },
     to: { opacity: 1 },
     config: { 
       mass: 1, 
@@ -155,7 +158,7 @@ function Frame() {
     reset: true,
   })
 
-  console.log(menu)
+  console.log(menu, menuPos)
   const longestLineLen = Math.max(...diff.map(line => line.length))
   return (
     <Fragment>
@@ -171,8 +174,8 @@ function Frame() {
           thinking it would fire a keydown event to trigger above
           - throttle might be an issue though
         */
-        menu.map(path => (
-          <div>{path}</div>
+        menu.map((path, pos) => (
+          <div key={path}>{path} {menuPos === pos && '*'}</div>
         ))}
     </Fragment>
   )
