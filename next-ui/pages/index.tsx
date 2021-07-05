@@ -1,7 +1,7 @@
 import Head from 'next/head'
 import Image from 'next/image'
 import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
-import { useSpring, animated } from 'react-spring'
+// import { useSpring, animated } from 'react-spring'
 import { of, fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
@@ -9,7 +9,7 @@ import styles from '../styles/Home.module.css'
 const baseURL = 'http://localhost:8081'
 const observeKeydown = () => fromEvent(document, 'keydown')
   .pipe(
-    throttleTime(300),
+    throttleTime(200),
     map(e => e.code),
     filter(Boolean),
   )
@@ -20,7 +20,6 @@ const fetchData = (pieces: string[]): Promise<Response> => {
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
 }
-
 
 async function loadPage(
   order: string = "", 
@@ -41,13 +40,13 @@ async function loadDiff(
   return res.json()
 }
 
-// being used as base of useDiff, but these were designed to be complimentary
-// separate + use in Frames?
 function useCommits() {
   const hashes = useRef([])
+  const path = useRef("")
+  const setPagePath = (newPath: string) => (path.current = newPath)
+
   const [pos, setPos] = useState(-1)
   const posRef = useRef(-1)
-  const [path, setPath] = useState("")
 
   function updatePos(value: number) {
     posRef.current = value
@@ -56,8 +55,7 @@ function useCommits() {
 
   // todo: issue, once reaching end, concats first page to end
   // similar situation going backwards
-  // may or may not be an issue, could just make hashes a fixed size and move with it
-  // want numbering of commits?
+  // todo: want numbering of commits to combat ^?
   useEffect(() => {
     // get the first page
     loadPage("next").then(page => {
@@ -65,12 +63,11 @@ function useCommits() {
       updatePos(0)
     })
     const subscription = observeKeydown().subscribe(code => {
-      // todo: need to check if page is empty or not
       const currPos = posRef.current
       switch (code) {
         case 'ArrowLeft':
           currPos > 0 && updatePos(currPos - 1)
-          currPos === 0 && loadPage('prev', hashes.current[currPos], path).then(page => {
+          currPos === 0 && loadPage('prev', hashes.current[currPos], path.current).then(page => {
             hashes.current = page.concat(hashes.current)
             updatePos(page.length - 1)
           })
@@ -78,7 +75,7 @@ function useCommits() {
         case 'ArrowRight':
           const last = hashes.current.length - 1
           currPos < last && updatePos(currPos + 1)
-          currPos === last && loadPage('next', hashes.current[currPos], path).then(page => {
+          currPos === last && loadPage('next', hashes.current[currPos], path.current).then(page => {
             hashes.current = hashes.current.concat(page)  
             updatePos(currPos + 1)
           })
@@ -86,7 +83,7 @@ function useCommits() {
     });
     return subscription?.unsubscribe
   }, [])
-  return { hash: hashes.current[pos], setPath }
+  return { hash: hashes.current[pos], setPagePath }
 }
 
 function useDiff() {
@@ -95,7 +92,7 @@ function useDiff() {
   const [pos, setPos] = useState(0)
   const posRef = useRef(0)
   // setPath is bad name, more like specifyPage, narrowPage??
-  const { hash, setPath: setHashesPath } = useCommits()
+  const { hash, setPagePath } = useCommits()
   
   const [path, setPath] = useState("")
 
@@ -106,15 +103,8 @@ function useDiff() {
   }
 
   useEffect(() => {
-    // todo, instead need Enter key to specify path is to be used
-    // like, a user is "selecting" once they nav through the menu
-    // And once enter is hit, then loadDiff can use it to determine
-    // what kind of diff is generated.
-    // 
-    // for now ignoring path
-    // const path = selecting ? "" : menu.current[pos]
     hash && loadDiff(hash, path).then(res => {
-        !path && (menu.current = res.pathMenu || [])
+        menu.current = res.pathMenu || []
         setDiff(res.diff)
         !path && updatePos(0)
     })
@@ -130,23 +120,23 @@ function useDiff() {
           return updatePos(currPos + 1)
         case 'Enter':
           setPath(menu.current[currPos])
-          // todo: how to handle path-specific searches?
-          // - have a "confirm" that resets hashes to a new set of 
-          //  pages that only involve the specified path?
-          // - stack of searches?
-          return setHashesPath(menu.current[currPos] || "")
+          setPagePath(menu.current[currPos] || "")
       }
     });
     return subscription?.unsubscribe
   }, [])
-  console.log(menu.current[pos])
-  // goin through menu cause animation to refresh, even though same diff
   return { diff, menu: menu.current, menuPos: posRef.current }
 }
 
+// todo: how to handle path-specific searches?
+// - have a "confirm" that resets hashes to a new set of 
+//  pages that only involve the specified path?
+//    could be hover, then click
+// - stack of searches?
 function Frame() {
   const { diff, menu, menuPos } = useDiff();
-  const fadeStyle = useSpring({
+  // unused
+  /*const fadeStyle = useSpring({
     from: { opacity: 0.5 },
     to: { opacity: 1 },
     config: { 
@@ -156,27 +146,30 @@ function Frame() {
       frequency: 2,
     },
     reset: true,
-  })
+    })*/
 
-  console.log(menu, menuPos)
-  const longestLineLen = Math.max(...diff.map(line => line.length))
+  function rowStyle(line: string): object {
+    switch (line[0]) {
+      case "+": return { background: "#99ff99" }
+      case "-": return { background: "#ff9999" }
+    } 
+    return {}
+  }
+
   return (
     <Fragment>
-      <animated.textarea 
-        style={fadeStyle} 
-        // rows and cols padded to avoid scrolling + wrapping
-        rows={diff.length + 1}
-        cols={longestLineLen + 5}
-        value={diff.join("\n")}
-        readOnly 
-      />
-      {/* still allow a user to click on menu?
-          thinking it would fire a keydown event to trigger above
-          - throttle might be an issue though
-        */
-        menu.map((path, pos) => (
-          <div key={path}>{path} {menuPos === pos && '*'}</div>
-        ))}
+      <table>
+        <tbody>
+          {diff.map(line => (
+            <tr style={rowStyle(line)} >
+              {line}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {menu.map((path, pos) => (
+        <div key={path}>{path} {menuPos === pos && '*'}</div>
+      ))}
     </Fragment>
   )
 }
