@@ -1,7 +1,6 @@
 import Head from 'next/head'
 import Image from 'next/image'
 import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
-// import { useSpring, animated } from 'react-spring'
 import { of, fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
@@ -89,10 +88,9 @@ function useCommits() {
 function useDiff() {
   const menu = useRef([])
   const [diff, setDiff] = useState([])
+  const { hash, setPagePath } = useCommits()
   const [pos, setPos] = useState(0)
   const posRef = useRef(0)
-  // setPath is bad name, more like specifyPage, narrowPage??
-  const { hash, setPagePath } = useCommits()
   
   const [path, setPath] = useState("")
 
@@ -135,19 +133,7 @@ function useDiff() {
 // - stack of searches?
 function Frame() {
   const { diff, menu, menuPos } = useDiff();
-  // unused
-  /*const fadeStyle = useSpring({
-    from: { opacity: 0.5 },
-    to: { opacity: 1 },
-    config: { 
-      mass: 1, 
-      tension: 280, 
-      friction: 120,
-      frequency: 2,
-    },
-    reset: true,
-    })*/
-
+  
   function rowStyle(line: string): object {
     switch (line[0]) {
       case "+": return { background: "#99ff99" }
@@ -161,14 +147,16 @@ function Frame() {
       <table>
         <tbody>
           {diff.map(line => (
-            <tr style={rowStyle(line)} >
+            <tr style={rowStyle(line)}>
               {line}
             </tr>
           ))}
         </tbody>
       </table>
       {menu.map((path, pos) => (
-        <div key={path}>{path} {menuPos === pos && '*'}</div>
+        <div key={path}>
+          {path} {menuPos === pos && '*'}
+        </div>
       ))}
     </Fragment>
   )
