@@ -114,11 +114,8 @@ function useCommits() {
 }
 
 // todo: push + start new traversal if pagePath set
-// todo: one col for name, one col for diff stat
-//  - aka better formatting
-// todo: menu - copy filesystem view from github?
-// todo: transition between commits + diffs are too jumpy
-//  - css grid?
+// todo: copy filesystem menu view from gitlab?
+// todo: feel cramped in diff view, have to pad outside of this component?
 export default function Frame() {
   const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
   const clickCount = useRef(0)
@@ -178,7 +175,7 @@ export default function Frame() {
         <title>ripthebuild</title>
       </Head>
       <main className={styles.main}>
-        <div className={styles.container}>
+        <div className={styles.menu}>
           {menu.map((path, pos) => (
             <button key={path}
               style={buttonStyle(path)}
@@ -188,13 +185,29 @@ export default function Frame() {
             </button>
           ))}
         </div>
-        <table>
+        <table className={styles.diffview}>
           <tbody>
-            {diff.map(line => (
-              <tr style={rowStyle(line)}>
-                {line}
-              </tr>
-            ))}
+            {diff.map(line => {
+              const statLine = line.split("|")
+              return statLine.length === 2 ? (
+                <tr>
+                  <td>
+                    <span className={styles.code}>
+                      {statLine[0]}
+                    </span>
+                  </td> 
+                  <td>
+                    <span className={styles.code}>
+                    | {statLine[1]}
+                    </span>
+                  </td>
+                </tr>
+              ) : (
+                <tr style={rowStyle(line)}>
+                  <span className={styles.code}>{line}</span>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </main>
