@@ -17,13 +17,30 @@
   display: grid;
   grid-auto-rows: minmax(50px, 70px);
 }
-
-.code {
-  white-space: pre-wrap;
-  font-size: 14px;
+.menu-button {
+  border: 1px solid;
+  background: white;
+  margin: 5px;
+  padding: 10px;
+}
+.read-path {
+  background: #b3cde0;
+}
+.flip-path {
+  background: #e3e6ff;
 }
 
 .diffview {
   grid-column-start: 2;
   grid-column-end: 5;
+}
+.row-add {
+  background: #99ff99;
+}
+.row-remove {
+  background: #ff9999;
+}
+.code {
+  white-space: pre-wrap;
+  font-size: 14px;
 }

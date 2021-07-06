@@ -114,37 +114,30 @@ function useCommits() {
 }
 
 // todo: push + start new traversal if pagePath set
+// todo: resolve edited paths in the backend
+//   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
 // todo: copy filesystem menu view from gitlab?
 // todo: feel cramped in diff view, have to pad outside of this component?
 export default function Frame() {
   const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
   const clickCount = useRef(0)
   
-  const rowStyle = (line: string): object => {
+  const rowStyle = (line: string): string => {
     switch (line[0]) {
-      case "+": return { background: "#99ff99" }
-      case "-": return { background: "#ff9999" }
+      case "+": return styles['row-add']
+      case "-": return styles['row-remove']
     } 
-    return {}
+    return ""
   }
 
-  const buttonStyle = (path: string): object => {
-    const base = { 
-      border: '1px solid',  
-      background: '#fff',
-      margin: 5,
-      padding: 10,
-    }
-
-    let clickedColor = '#95a9bf'
+  const buttonStyle = (path: string): string => {
+    let clickedColor;
     switch(clickCount.current) {
-      case 1: clickedColor = '#b3cde0'; break
-      case 2: clickedColor = '#e3e6ff'
+      case 1: clickedColor = styles['read-path']; break
+      case 2: clickedColor = styles['flip-path']
     }
-
-    return path === readPath 
-      ? { ...base, background: clickedColor } 
-      : base ;
+    const clickedStyle = path === readPath ? clickedColor : ''
+    return `${styles['menu-button']} ${clickedStyle} `
   }
   
   const resetPaths = () => {
@@ -178,7 +171,7 @@ export default function Frame() {
         <div className={styles.menu}>
           {menu.map((path, pos) => (
             <button key={path}
-              style={buttonStyle(path)}
+              className={buttonStyle(path)}
               onClick={() => selectPath(path)} 
             >
               {path}
@@ -203,7 +196,7 @@ export default function Frame() {
                   </td>
                 </tr>
               ) : (
-                <tr style={rowStyle(line)}>
+                <tr className={rowStyle(line)}>
                   <span className={styles.code}>{line}</span>
                 </tr>
               )
