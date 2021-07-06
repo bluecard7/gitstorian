@@ -41,100 +41,89 @@ async function loadDiff(
 
 function useCommits() {
   const hashes = useRef([])
-  const path = useRef("")
-  const setPagePath = (newPath: string) => (path.current = newPath)
-
-  const [pos, setPos] = useState(-1)
-  const posRef = useRef(-1)
-
-  function updatePos(value: number) {
-    posRef.current = value
-    setPos(value)
-  }
-
-  // todo: issue, once reaching end, concats first page to end
-  // similar situation going backwards
-  // todo: want numbering of commits to combat ^?
-  useEffect(() => {
-    // get the first page
-    loadPage("next").then(page => {
-      hashes.current = page
-      updatePos(0)
-    })
-    const subscription = observeKeydown().subscribe(code => {
-      const currPos = posRef.current
-      switch (code) {
-        case 'ArrowLeft':
-          currPos > 0 && updatePos(currPos - 1)
-          currPos === 0 && loadPage('prev', hashes.current[currPos], path.current).then(page => {
-            hashes.current = page.concat(hashes.current)
-            updatePos(page.length - 1)
-          })
-          break
-        case 'ArrowRight':
-          const last = hashes.current.length - 1
-          currPos < last && updatePos(currPos + 1)
-          currPos === last && loadPage('next', hashes.current[currPos], path.current).then(page => {
-            hashes.current = hashes.current.concat(page)  
-            updatePos(currPos + 1)
-          })
-      }
-    });
-    return subscription?.unsubscribe
-  }, [])
-  return { hash: hashes.current[pos], setPagePath }
-}
-
-function useDiff() {
+  const [hashPos, setHashPos] = useState(-1)
+  const hashPosRef = useRef(-1)
+  
   const menu = useRef([])
   const [diff, setDiff] = useState([])
-  const { hash, setPagePath } = useCommits()
-  const [pos, setPos] = useState(0)
-  const posRef = useRef(0)
   
-  const [path, setPath] = useState("")
-
-  function updatePos(newPos: number) {
-    if (newPos < 0 || newPos === menu.current.length) return 
-    posRef.current = newPos
-    setPos(newPos)
+  const [pagePath, setPagePath] = useState("")
+  const [readPath, setReadPath] = useState("")
+  
+  const flip = (order: string): Promise<string[]> => {
+    const hash = hashes.current[hashPosRef.current]
+    return loadPage(order, hash, pagePath)
   }
-
+  const updateHashPos = (pos: number) => {
+    hashPosRef.current = pos
+    setHashPos(pos)
+  }
+  const prepend = (page: string[]) => {
+    hashes.current = page.concat(hashes.current)
+    updateHashPos(page.length - 1)
+  }
+  const append = (page: string[]) => {
+    hashes.current = hashes.current.concat(page)  
+    updateHashPos(hashPosRef.current + 1)
+  }
+ 
   useEffect(() => {
-    hash && loadDiff(hash, path).then(res => {
-        menu.current = res.pathMenu || []
-        setDiff(res.diff)
-        !path && updatePos(0)
-    })
-  }, [hash, path])
-
-  useEffect(() => {
+    flip("next").then(append)
     const subscription = observeKeydown().subscribe(code => {
-      const currPos = posRef.current
-      switch (code) {
-        case 'ArrowUp':
-          return updatePos(currPos - 1)
-        case 'ArrowDown':
-          return updatePos(currPos + 1)
-        case 'Enter':
-          setPath(menu.current[currPos])
-          setPagePath(menu.current[currPos] || "")
+      const currHashPos = hashPosRef.current;
+      if (code === 'ArrowLeft') {
+        if (currHashPos === 0) {
+          flip("prev").then(prepend)
+        } else {
+          updateHashPos(currHashPos - 1) 
+        }
       }
+      if (code === 'ArrowRight') {
+        if (currHashPos === hashes.current.length - 1) {
+          flip("next").then(append)
+        } else {
+          updateHashPos(currHashPos + 1) 
+        }
+      }
+      // always reset for now, but not if there's a pagePath?
+      setReadPath("")
     });
     return subscription?.unsubscribe
   }, [])
-  return { diff, menu: menu.current, menuPos: posRef.current }
+  
+  useEffect(() => {
+    // pagePath && ...push onto traversal stack?
+    console.log("page path set, i would do something")
+  }, [pagePath])
+
+  useEffect(() => {
+    const hash = hashes.current[hashPosRef.current]
+    hash && loadDiff(hash, readPath).then(res => {
+        menu.current = res.pathMenu || []
+        setDiff(res.diff)
+    })
+  }, [hashPos, readPath])
+
+  return {
+    menu: menu.current,
+    diff,
+    readPath,
+    setReadPath,
+    setPagePath,
+  }
 }
 
-// todo: how to handle path-specific searches?
-// - have a "confirm" that resets hashes to a new set of 
-//  pages that only involve the specified path?
-//    could be hover, then click
-// - stack of searches?
-function Frame() {
-  const { diff, menu, menuPos } = useDiff();
+// todo: push + start new traversal if pagePath set
+// todo: one col for name, one col for diff stat
+//  - aka better formatting
+// todo: menu - copy filesystem view from github?
+// todo: transition between commits + diffs are too jumpy
+//  - css grid?
+export default function Frame() {
+  const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
+  const clickCount = useRef(0)
   
-  function rowStyle(line: string): object {
+  const rowStyle = (line: string): object => {
     switch (line[0]) {
       case "+": return { background: "#99ff99" }
       case "-": return { background: "#ff9999" }
@@ -142,34 +131,72 @@ function Frame() {
     return {}
   }
 
-  return (
-    <Fragment>
-      <table>
-        <tbody>
-          {diff.map(line => (
-            <tr style={rowStyle(line)}>
-              {line}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {menu.map((path, pos) => (
-        <div key={path}>
-          {path} {menuPos === pos && '*'}
-        </div>
-      ))}
-    </Fragment>
-  )
-}
+  const buttonStyle = (path: string): object => {
+    const base = { 
+      border: '1px solid',  
+      background: '#fff',
+      margin: 5,
+      padding: 10,
+    }
 
-export default function Entry() {
+    let clickedColor = '#95a9bf'
+    switch(clickCount.current) {
+      case 1: clickedColor = '#b3cde0'; break
+      case 2: clickedColor = '#e3e6ff'
+    }
+
+    return path === readPath 
+      ? { ...base, background: clickedColor } 
+      : base ;
+  }
+  
+  const resetPaths = () => {
+    setReadPath("")
+    setPagePath("")
+  }
+  
+  const selectPath = (path: string) => {
+    if (clickCount.current === 0 || path !== readPath) {
+      setReadPath(path)
+      clickCount.current = 1
+      return
+    }
+    if (clickCount.current === 1) {
+      setPagePath(path)
+      clickCount.current = 2
+      return
+    }
+    if (clickCount.current === 2) {
+      resetPaths()
+      clickCount.current = 0
+    }
+  }
+
   return (
     <div className={styles.container}>
       <Head>
         <title>ripthebuild</title>
       </Head>
       <main className={styles.main}>
-        <Frame />
+        <div className={styles.container}>
+          {menu.map((path, pos) => (
+            <button key={path}
+              style={buttonStyle(path)}
+              onClick={() => selectPath(path)} 
+            >
+              {path}
+            </button>
+          ))}
+        </div>
+        <table>
+          <tbody>
+            {diff.map(line => (
+              <tr style={rowStyle(line)}>
+                {line}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </main>
     </div>
   )
