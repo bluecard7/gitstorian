@@ -1,7 +1,6 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import { Fragment, useCallback, useEffect, useState } from 'react'
-import { useSpring, animated } from 'react-spring'
+import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
 import { of, fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
@@ -9,7 +8,7 @@ import styles from '../styles/Home.module.css'
 const baseURL = 'http://localhost:8081'
 const observeKeydown = () => fromEvent(document, 'keydown')
   .pipe(
-    throttleTime(500),
+    throttleTime(200),
     map(e => e.code),
     filter(Boolean),
   )
@@ -21,7 +20,6 @@ const fetchData = (pieces: string[]): Promise<Response> => {
     .catch(err => ({ text: () => err.message }))
 }
 
-
 async function loadPage(
   order: string = "", 
   hash: string = "", 
@@ -31,127 +29,180 @@ async function loadPage(
   return res.ok ? (await res.json()) : []
 }
 
+// todo: file renames result in both versions being appended w/ =>
+// handle in backend
 async function loadDiff(
   hash: string = "", 
   path: string = ""
-): Promise<{ diff: string[], menu: string[]}> {
+): Promise<{ diff: string[], pathMenu: string[]}> {
   const res = await fetchData([baseURL,'diffs', hash, path])
   return res.json()
 }
 
-function useCommits(keydownObserver) {
-  const [hashes, setHashes] = useState([])
-  const [pos, setPos] = useState(0)
-  const [path, setPath] = useState("")
-  useEffect(() => {
-    // get the first page
-    loadPage("next").then(page => setHashes(page))
-    const subscription = keydownObserver.subscribe(code => {
-      // todo: need to check if page is empty or not
-      switch (code) {
-        case 'ArrowLeft':
-          0 < pos && setPos(old => old - 1)
-          pos === 0 && loadPage('prev', hashes[pos], path).then(page => {
-            setHashes([...page, ...hashes])
-            setPos(page.length - 1)
-          })
-          break
-        case 'ArrowRight':
-          const last = hashes.length - 1
-          pos < last && setPos(old => old + 1)
-          pos === last && loadPage('next', hashes[pos], path).then(page => {
-            setHashes([...hashes, ...page])
-            setPos(old => old + 1)
-          })
-      }
-    });
-    return subscription.unsubscribe
-  }, [])
-  // hash could be undefined
-  return { hash: hashes[pos], setPath }
-}
-
-function useDiff(keydownObserver) {
+function useCommits() {
+  const hashes = useRef([])
+  const [hashPos, setHashPos] = useState(-1)
+  const hashPosRef = useRef(-1)
+  
+  const menu = useRef([])
   const [diff, setDiff] = useState([])
-  const [pathMenu, setMenu] = useState([])
-  const [pos, setPos] = useState(0)
-  const { hash, setPath } = useCommits(keydownObserver)
-
+  
+  const [pagePath, setPagePath] = useState("")
+  const [readPath, setReadPath] = useState("")
+  
+  const flip = (order: string): Promise<string[]> => {
+    const hash = hashes.current[hashPosRef.current]
+    return loadPage(order, hash, pagePath)
+  }
+  const updateHashPos = (pos: number) => {
+    hashPosRef.current = pos
+    setHashPos(pos)
+  }
+  const prepend = (page: string[]) => {
+    hashes.current = page.concat(hashes.current)
+    updateHashPos(page.length - 1)
+  }
+  const append = (page: string[]) => {
+    hashes.current = hashes.current.concat(page)  
+    updateHashPos(hashPosRef.current + 1)
+  }
+ 
   useEffect(() => {
-    hash && loadDiff(hash, pathMenu[pos]).then(res => {
-        res.menu && setMenu(res.menu)
-        res.diff && setDiff(res.diff) 
-    })
-  }, [hash])
-
-  useEffect(() => {
-    const subscription = keydownObserver.subscribe(code => {
-      switch (code) {
-        case 'ArrowUp':
-          return setPos(old => old + 1)
-        case 'ArrowDown':
-          return setPos(old => old - 1)
-        case 'Enter':
-          return setPath(pathMenu[pos] || "")
+    flip("next").then(append)
+    const subscription = observeKeydown().subscribe(code => {
+      const currHashPos = hashPosRef.current;
+      if (code === 'ArrowLeft') {
+        if (currHashPos === 0) {
+          flip("prev").then(prepend)
+        } else {
+          updateHashPos(currHashPos - 1) 
+        }
       }
+      if (code === 'ArrowRight') {
+        if (currHashPos === hashes.current.length - 1) {
+          flip("next").then(append)
+        } else {
+          updateHashPos(currHashPos + 1) 
+        }
+      }
+      // always reset for now, but not if there's a pagePath?
+      setReadPath("")
     });
-    return subscription.unsubscribe
+    return subscription?.unsubscribe
   }, [])
-  // how to show which one is currently chosen?
-  // - text difference? aka add * to current chosen
-  return { diff, pathMenu }
+  
+  useEffect(() => {
+    // pagePath && ...push onto traversal stack?
+    console.log("page path set, i would do something")
+  }, [pagePath])
+
+  useEffect(() => {
+    const hash = hashes.current[hashPosRef.current]
+    hash && loadDiff(hash, readPath).then(res => {
+        menu.current = res.pathMenu || []
+        setDiff(res.diff)
+    })
+  }, [hashPos, readPath])
+
+  return {
+    menu: menu.current,
+    diff,
+    readPath,
+    setReadPath,
+    setPagePath,
+  }
 }
 
-function Frame() {
-  const [keydownObserver, setObserver] = useState(of())
-  const { diff, pathMenu } = useDiff(keydownObserver);
-  const fadeStyle = useSpring({
-    from: { opacity: 0.3 },
-    to: { opacity: 1 },
-    config: { 
-      mass: 1, 
-      tension: 280, 
-      friction: 120,
-      frequency: 2,
-    },
-    reset: true,
-  })
+// todo: push + start new traversal if pagePath set
+// todo: resolve edited paths in the backend
+//   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
+// todo: copy filesystem menu view from gitlab?
+// todo: feel cramped in diff view, have to pad outside of this component?
+export default function Frame() {
+  const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
+  const clickCount = useRef(0)
+  
+  const rowStyle = (line: string): string => {
+    switch (line[0]) {
+      case "+": return styles['row-add']
+      case "-": return styles['row-remove']
+    } 
+    return ""
+  }
 
-  useEffect(() => setObserver(observeKeydown()), [])
+  const buttonStyle = (path: string): string => {
+    let clickedColor;
+    switch(clickCount.current) {
+      case 1: clickedColor = styles['read-path']; break
+      case 2: clickedColor = styles['flip-path']
+    }
+    const clickedStyle = path === readPath ? clickedColor : ''
+    return `${styles['menu-button']} ${clickedStyle} `
+  }
+  
+  const resetPaths = () => {
+    setReadPath("")
+    setPagePath("")
+  }
+  
+  const selectPath = (path: string) => {
+    if (clickCount.current === 0 || path !== readPath) {
+      setReadPath(path)
+      clickCount.current = 1
+      return
+    }
+    if (clickCount.current === 1) {
+      setPagePath(path)
+      clickCount.current = 2
+      return
+    }
+    if (clickCount.current === 2) {
+      resetPaths()
+      clickCount.current = 0
+    }
+  }
 
-  console.log("res", diff, pathMenu)
-  const longestLineLen = Math.max(...diff.map(line => line.length))
-  return (
-    <Fragment>
-      <animated.textarea 
-        style={fadeStyle} 
-        // rows and cols padded to avoid scrolling + wrapping
-        rows={diff.length + 1}
-        cols={longestLineLen + 5}
-        value={diff}
-        readOnly 
-      />
-      {/* still allow a user to click on menu?
-          thinking it would fire a keydown event to trigger above
-          - throttle might be an issue though
-        */
-        pathMenu.map(path => (
-          <div>
-            {filename}
-          </div>
-        ))}
-    </Fragment>
-  )
-}
-
-export default function Entry() {
   return (
     <div className={styles.container}>
       <Head>
         <title>ripthebuild</title>
       </Head>
       <main className={styles.main}>
-        <Frame />
+        <div className={styles.menu}>
+          {menu.map((path, pos) => (
+            <button key={path}
+              className={buttonStyle(path)}
+              onClick={() => selectPath(path)} 
+            >
+              {path}
+            </button>
+          ))}
+        </div>
+        <table className={styles.diffview}>
+          <tbody>
+            {diff.map(line => {
+              const statLine = line.split("|")
+              return statLine.length === 2 ? (
+                <tr>
+                  <td>
+                    <span className={styles.code}>
+                      {statLine[0]}
+                    </span>
+                  </td> 
+                  <td>
+                    <span className={styles.code}>
+                    | {statLine[1]}
+                    </span>
+                  </td>
+                </tr>
+              ) : (
+                <tr className={rowStyle(line)}>
+                  <span className={styles.code}>{line}</span>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </main>
     </div>
   )
