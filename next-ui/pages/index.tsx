@@ -29,8 +29,6 @@ async function loadPage(
   return res.ok ? (await res.json()) : []
 }
 
-// todo: file renames result in both versions being appended w/ =>
-// handle in backend
 async function loadDiff(
   hash: string = "", 
   path: string = ""
@@ -39,9 +37,19 @@ async function loadDiff(
   return res.json()
 }
 
+interface Traversal {
+  path: string;
+  hashes: string[];
+  pos: number;
+}
+
 function useCommits() {
+  const traversals = useRef<Traversal[]>([])
+
   const hashes = useRef([])
   const [hashPos, setHashPos] = useState(-1)
+  // ref to make sure keydown subscription has access to most recent value
+  // but wondering: can I just set state with a callback?
   const hashPosRef = useRef(-1)
   
   const menu = useRef([])
@@ -50,37 +58,38 @@ function useCommits() {
   const [pagePath, setPagePath] = useState("")
   const [readPath, setReadPath] = useState("")
   
-  const flip = (order: string): Promise<string[]> => {
-    const hash = hashes.current[hashPosRef.current]
-    return loadPage(order, hash, pagePath)
-  }
   const updateHashPos = (pos: number) => {
     hashPosRef.current = pos
     setHashPos(pos)
-  }
-  const prepend = (page: string[]) => {
-    hashes.current = page.concat(hashes.current)
-    updateHashPos(page.length - 1)
   }
   const append = (page: string[]) => {
     hashes.current = hashes.current.concat(page)  
     updateHashPos(hashPosRef.current + 1)
   }
+  const prepend = (page: string[]) => {
+    hashes.current = page.concat(hashes.current)
+    updateHashPos(page.length - 1)
+  }
+  const flip = (order: string): Promise<string[]> => {
+    const hash = hashes.current[hashPosRef.current]
+    const insert = order === "next" ? append : prepend
+    return loadPage(order, hash, pagePath).then(insert)
+  }
  
   useEffect(() => {
-    flip("next").then(append)
+    flip("next")
     const subscription = observeKeydown().subscribe(code => {
       const currHashPos = hashPosRef.current;
       if (code === 'ArrowLeft') {
         if (currHashPos === 0) {
-          flip("prev").then(prepend)
+          flip("prev")
         } else {
           updateHashPos(currHashPos - 1) 
         }
       }
       if (code === 'ArrowRight') {
         if (currHashPos === hashes.current.length - 1) {
-          flip("next").then(append)
+          flip("next")
         } else {
           updateHashPos(currHashPos + 1) 
         }
@@ -92,8 +101,27 @@ function useCommits() {
   }, [])
   
   useEffect(() => {
-    // pagePath && ...push onto traversal stack?
-    console.log("page path set, i would do something")
+    console.log("page path set to:", pagePath)
+    // assuming pagePath is up-to-date here
+    if (pagePath) {
+      traversals.current.push({ 
+        path: pagePath, 
+        hashes: [...hashes.current], 
+        pos: hashPosRef.current, 
+      })
+      const size = hashes.current.length
+      flip("next")
+      // should load a page of hashes that only involve pagePath
+      hashes.current = [...hashes.current.slice(size)]
+      updateHashPos(0)
+    } else {
+      // else, path is reset, so get prior traversal
+      const { path, hashes: h, pos } traversals.current.pop()
+      // this is gonna rerun this useEffect...
+      // setPagePath(path)
+      hashes.current = h
+      hashPosRef.current = pos
+    }
   }, [pagePath])
 
   useEffect(() => {
@@ -113,7 +141,6 @@ function useCommits() {
   }
 }
 
-// todo: push + start new traversal if pagePath set
 // todo: resolve edited paths in the backend
 //   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
 // todo: copy filesystem menu view from gitlab?
