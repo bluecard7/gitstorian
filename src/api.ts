@@ -63,7 +63,9 @@ async function initialPage(): Promise<string[]> {
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
-  const cmd = `git rev-list ${hash || "HEAD"} ${path || ""} -n${PAGE_SIZE + 1}`;
+  // todo: tests didn't catch that I needed the -- in the command
+  const fileOpt = path ? `-- ${path}` : ""
+  const cmd = `git rev-list ${hash || "HEAD"} ${fileOpt} -n${PAGE_SIZE + 1}`;
   // invariant is the commit from which the prev page is
   // grabbed from is included in the output. But this isn't
   // true when going from the first commit to the last page -
@@ -71,14 +73,16 @@ async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
   // need to remove the first commit of the last page in that case.
   const step = hash ? [0, -1] : [1];
   const page = lines(await run(cmd)).reverse().slice(...step);
+  // todo: recursive if page length always 0
   return page.length ? page : prevPage({});
 }
 
 async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
-  const range = hash ? `${hash}..` : "HEAD";
+  const range = hash ? `${hash} HEAD` : "HEAD";
+  const fileOpt = path ? `-- ${path}` : ""
   // Need to use head instead of -n in this case
   // because reverse is applied after cutting
-  const cmd = `git rev-list --reverse ${range} ${path || ""}`;
+  const cmd = `git rev-list --reverse ${range} ${fileOpt}`;
   const page = lines(await run(`${cmd} | head -n${PAGE_SIZE}`));
   return page.length ? page : nextPage({});
 }

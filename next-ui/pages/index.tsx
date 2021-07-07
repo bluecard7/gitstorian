@@ -49,13 +49,16 @@ function useCommits() {
   const hashes = useRef([])
   const [hashPos, setHashPos] = useState(-1)
   // ref to make sure keydown subscription has access to most recent value
-  // but wondering: can I just set state with a callback?
   const hashPosRef = useRef(-1)
-  
+
   const menu = useRef([])
   const [diff, setDiff] = useState([])
   
-  const [pagePath, setPagePath] = useState("")
+  const pagePath = useRef("")
+  const setPagePath = (path: string) => {
+    pagePath.current = path;
+  }
+
   const [readPath, setReadPath] = useState("")
   
   const updateHashPos = (pos: number) => {
@@ -73,7 +76,7 @@ function useCommits() {
   const flip = (order: string): Promise<string[]> => {
     const hash = hashes.current[hashPosRef.current]
     const insert = order === "next" ? append : prepend
-    return loadPage(order, hash, pagePath).then(insert)
+    return loadPage(order, hash, pagePath.current).then(insert)
   }
  
   useEffect(() => {
@@ -82,6 +85,10 @@ function useCommits() {
       const currHashPos = hashPosRef.current;
       if (code === 'ArrowLeft') {
         if (currHashPos === 0) {
+          // todo: wrong b/c if no more content, this 
+          // will do a non-specific page.
+          // (b/c we just opted to pass prevPage({}) in that
+          // case.)
           flip("prev")
         } else {
           updateHashPos(currHashPos - 1) 
@@ -94,59 +101,69 @@ function useCommits() {
           updateHashPos(currHashPos + 1) 
         }
       }
-      // always reset for now, but not if there's a pagePath?
-      setReadPath("")
+      !pagePath.current && setReadPath("")
     });
     return subscription?.unsubscribe
   }, [])
-  
-  useEffect(() => {
-    console.log("page path set to:", pagePath)
-    // assuming pagePath is up-to-date here
-    if (pagePath) {
-      traversals.current.push({ 
-        path: pagePath, 
-        hashes: [...hashes.current], 
-        pos: hashPosRef.current, 
-      })
-      const size = hashes.current.length
-      flip("next")
-      // should load a page of hashes that only involve pagePath
-      hashes.current = [...hashes.current.slice(size)]
-      updateHashPos(0)
-    } else {
-      // else, path is reset, so get prior traversal
-      const { path, hashes: h, pos } traversals.current.pop()
-      // this is gonna rerun this useEffect...
-      // setPagePath(path)
-      hashes.current = h
-      hashPosRef.current = pos
-    }
-  }, [pagePath])
 
   useEffect(() => {
-    const hash = hashes.current[hashPosRef.current]
+    const hash = hashes.current[hashPos]
     hash && loadDiff(hash, readPath).then(res => {
         menu.current = res.pathMenu || []
         setDiff(res.diff)
+        console.table({hash, menu})
+        console.log(...traversals.current)
     })
   }, [hashPos, readPath])
 
+  const addTraversal = (path: string) => {
+    console.log("adding traversal")
+    traversals.current.push({ 
+      path: pagePath.current,
+      hashes: [...hashes.current], 
+      pos: hashPos, 
+    })
+    const cut = hashes.current.length
+    setPagePath(path)
+    flip("next").then(() => {
+      hashes.current = [...hashes.current.slice(cut)]
+      updateHashPos(0)
+    })
+  }
+
+  const removeTraversal = () => {
+    const { path, pos, hashes: h } = traversals.current.pop()
+    setReadPath(path)
+    setPagePath(path)
+    hashes.current = h
+    updateHashPos(pos)
+  }
+
+  console.log({hashes: hashes.current})
   return {
     menu: menu.current,
     diff,
     readPath,
     setReadPath,
-    setPagePath,
+    addTraversal,
+    removeTraversal,
   }
 }
 
 // todo: resolve edited paths in the backend
 //   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
+//   - resolve truncated paths
 // todo: copy filesystem menu view from gitlab?
 // todo: feel cramped in diff view, have to pad outside of this component?
 export default function Frame() {
-  const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
+  const { 
+    diff, 
+    menu, 
+    readPath, 
+    setReadPath, 
+    addTraversal,
+    removeTraversal,
+  } = useCommits();
   const clickCount = useRef(0)
   
   const rowStyle = (line: string): string => {
@@ -167,11 +184,6 @@ export default function Frame() {
     return `${styles['menu-button']} ${clickedStyle} `
   }
   
-  const resetPaths = () => {
-    setReadPath("")
-    setPagePath("")
-  }
-  
   const selectPath = (path: string) => {
     if (clickCount.current === 0 || path !== readPath) {
       setReadPath(path)
@@ -179,12 +191,12 @@ export default function Frame() {
       return
     }
     if (clickCount.current === 1) {
-      setPagePath(path)
+      addTraversal(path)
       clickCount.current = 2
       return
     }
     if (clickCount.current === 2) {
-      resetPaths()
+      removeTraversal()
       clickCount.current = 0
     }
   }
