@@ -44,6 +44,7 @@ function useCommits() {
   const [menu, setMenu] = useState([])
   const [diff, setDiff] = useState([])
   const [readPath, setReadPath] = useState("")
+  const [bookmarkHash, setBookmarkHash] = useState("")
   
   const append = (page: string[]) => {
     hashes.current = hashes.current.concat(page)  
@@ -55,11 +56,23 @@ function useCommits() {
   }
   const flip = (order: string): Promise<string[]> => {
     const hash = hashes.current[hashPos]
-    const insert = order === "next" ? append : prepend
+    const insert = order === "prev" ? prepend : append
     return loadPage(order, hash).then(insert)
   }
+  const bookmark = () => {
+    const page = hashes.current.slice(hashPos)
+    // will always return true for now, even if it failed
+    fetch(urlify([baseURL, 'bookmark']), {
+      method: 'POST',
+      body: JSON.stringify(page),
+    })
+    .then(() => setBookmarkHash(page[0]))
+    .catch(() => {})
+  }
 
-  useEffect(() => { flip("next") }, [])
+  useEffect(() => { 
+    loadPage().then(page => setBookmarkHash(page[0]))
+  }, [])
  
   useEffect(() => {
     const subscription = keydownObserver.subscribe(code => {
@@ -69,6 +82,7 @@ function useCommits() {
         } else {
           setHashPos(hashPos - 1) 
         }
+        setReadPath("")
       }
       if (code === 'ArrowRight') {
         if (hashPos === hashes.current.length - 1) {
@@ -76,8 +90,8 @@ function useCommits() {
         } else {
           setHashPos(hashPos + 1) 
         }
+        setReadPath("")
       }
-      setReadPath("")
     });
     return () => subscription.unsubscribe()
   }, [hashPos])
@@ -95,14 +109,16 @@ function useCommits() {
     diff,
     readPath,
     setReadPath,
+    bookmarked: bookmarkHash === hashes.current[hashPos],
+    bookmark,
   }
 }
 
 // todo: resolve edited paths in the backend
 //   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
 //   - resolve truncated paths
-// todo: copy filesystem menu view from gitlab?
-// todo: feel cramped in diff view, have to pad outside of this component?
+// todo: increase --stat=<width> to get longer paths
+// todo: copy file contents at that version
 function rowStyle (line: string): string {
   switch (line[0]) {
     case "+": return styles['row-add']
@@ -121,7 +137,9 @@ export default function Frame() {
     diff, 
     menu, 
     readPath, 
-    setReadPath, 
+    setReadPath,
+    bookmarked,
+    bookmark,
   } = useCommits();
   
   const selectPath = (path: string) => {
@@ -135,6 +153,13 @@ export default function Frame() {
       </Head>
       <main className={styles.main}>
         <div className={styles.menu}>
+          <button 
+            className={styles['bookmark-button']}
+            onClick={bookmark}
+            disabled={bookmarked}
+          >
+            {bookmarked ? 'Bookmarked' : 'Bookmark this commit' }
+          </button>
           {menu.map((path, pos) => (
             <button key={path}
               className={buttonStyle(path === readPath)}

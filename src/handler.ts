@@ -62,7 +62,6 @@ export async function handle(
   }
   if (match(req, "GET", "/commits")) {
     const path = req.url.split("/").slice(2);
-    // todo: allow filename to be provided
     const [order, hash, ...file] = path;
     const body = JSON.stringify(
       await flip(order, { hash, path: file.join("/") }),

@@ -55,6 +55,7 @@ export function flip(
 // initial page is the page starting from the bookmark or
 // the first page if the bookmark doesn't exist
 async function initialPage(): Promise<string[]> {
+  console.log(Deno.cwd(), existsSync(storeName))
   if (existsSync(storeName)) {
     const blob = decoder.decode(Deno.readFileSync(storeName));
     return lines(blob);

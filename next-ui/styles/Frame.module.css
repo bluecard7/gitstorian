@@ -17,12 +17,29 @@
   display: grid;
   grid-auto-rows: minmax(50px, 70px);
 }
+.menu-button:hover, .bookmark-button:hover {
+  cursor: pointer;
+}
+.bookmark-button:disabled {
+  cursor: not-allowed;
+  border-color: grey;
+  color: grey;
+}
 .menu-button {
   border: 1px solid;
   background: white;
   margin: 5px;
   padding: 10px;
 }
+.bookmark-button {
+  border: 1px solid #5366AD;
+  border-radius: 20px;
+  color: #5366AD;
+  background: white;
+  margin: 5px;
+  padding: 10px;
+}
+
 .read-path {
   background: #b3cde0;
 }
