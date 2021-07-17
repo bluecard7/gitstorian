@@ -1,18 +1,19 @@
 import Head from 'next/head'
 import Image from 'next/image'
 import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
-import { of, fromEvent } from 'rxjs'
+import { fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
-import styles from '../styles/Home.module.css'
+import styles from '../styles/Frame.module.css'
 
 const baseURL = 'http://localhost:8081'
-const observeKeydown = () => fromEvent(document, 'keydown')
+const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
+const keydownObserver = typeof window !== 'undefined' && fromEvent(document, 'keydown')
   .pipe(
     throttleTime(200),
     map(e => e.code),
     filter(Boolean),
   )
-const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
+
 const fetchData = (pieces: string[]): Promise<Response> => {
   console.log(urlify(pieces))
   return fetch(urlify(pieces))
@@ -29,8 +30,6 @@ async function loadPage(
   return res.ok ? (await res.json()) : []
 }
 
-// todo: file renames result in both versions being appended w/ =>
-// handle in backend
 async function loadDiff(
   hash: string = "", 
   path: string = ""
@@ -42,124 +41,91 @@ async function loadDiff(
 function useCommits() {
   const hashes = useRef([])
   const [hashPos, setHashPos] = useState(-1)
-  const hashPosRef = useRef(-1)
-  
-  const menu = useRef([])
+  const [menu, setMenu] = useState([])
   const [diff, setDiff] = useState([])
-  
-  const [pagePath, setPagePath] = useState("")
   const [readPath, setReadPath] = useState("")
   
-  const flip = (order: string): Promise<string[]> => {
-    const hash = hashes.current[hashPosRef.current]
-    return loadPage(order, hash, pagePath)
-  }
-  const updateHashPos = (pos: number) => {
-    hashPosRef.current = pos
-    setHashPos(pos)
+  const append = (page: string[]) => {
+    hashes.current = hashes.current.concat(page)  
+    setHashPos(hashPos + 1)
   }
   const prepend = (page: string[]) => {
     hashes.current = page.concat(hashes.current)
-    updateHashPos(page.length - 1)
+    setHashPos(page.length - 1)
   }
-  const append = (page: string[]) => {
-    hashes.current = hashes.current.concat(page)  
-    updateHashPos(hashPosRef.current + 1)
+  const flip = (order: string): Promise<string[]> => {
+    const hash = hashes.current[hashPos]
+    const insert = order === "next" ? append : prepend
+    return loadPage(order, hash).then(insert)
   }
+
+  useEffect(() => { flip("next") }, [])
  
   useEffect(() => {
-    flip("next").then(append)
-    const subscription = observeKeydown().subscribe(code => {
-      const currHashPos = hashPosRef.current;
+    const subscription = keydownObserver.subscribe(code => {
       if (code === 'ArrowLeft') {
-        if (currHashPos === 0) {
-          flip("prev").then(prepend)
+        if (hashPos === 0) {
+          flip("prev")
         } else {
-          updateHashPos(currHashPos - 1) 
+          setHashPos(hashPos - 1) 
         }
       }
       if (code === 'ArrowRight') {
-        if (currHashPos === hashes.current.length - 1) {
-          flip("next").then(append)
+        if (hashPos === hashes.current.length - 1) {
+          flip("next")
         } else {
-          updateHashPos(currHashPos + 1) 
+          setHashPos(hashPos + 1) 
         }
       }
-      // always reset for now, but not if there's a pagePath?
       setReadPath("")
     });
-    return subscription?.unsubscribe
-  }, [])
-  
-  useEffect(() => {
-    // pagePath && ...push onto traversal stack?
-    console.log("page path set, i would do something")
-  }, [pagePath])
+    return () => subscription.unsubscribe()
+  }, [hashPos])
 
   useEffect(() => {
-    const hash = hashes.current[hashPosRef.current]
+    const hash = hashes.current[hashPos]
     hash && loadDiff(hash, readPath).then(res => {
-        menu.current = res.pathMenu || []
-        setDiff(res.diff)
+        setMenu(res.pathMenu || [])
+        setDiff(res.diff || [])
     })
   }, [hashPos, readPath])
 
   return {
-    menu: menu.current,
+    menu,
     diff,
     readPath,
     setReadPath,
-    setPagePath,
   }
 }
 
-// todo: push + start new traversal if pagePath set
 // todo: resolve edited paths in the backend
 //   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
+//   - resolve truncated paths
 // todo: copy filesystem menu view from gitlab?
 // todo: feel cramped in diff view, have to pad outside of this component?
-export default function Frame() {
-  const { diff, menu, readPath, setReadPath, setPagePath } = useCommits();
-  const clickCount = useRef(0)
-  
-  const rowStyle = (line: string): string => {
-    switch (line[0]) {
-      case "+": return styles['row-add']
-      case "-": return styles['row-remove']
-    } 
-    return ""
-  }
+function rowStyle (line: string): string {
+  switch (line[0]) {
+    case "+": return styles['row-add']
+    case "-": return styles['row-remove']
+  } 
+  return ""
+}
 
-  const buttonStyle = (path: string): string => {
-    let clickedColor;
-    switch(clickCount.current) {
-      case 1: clickedColor = styles['read-path']; break
-      case 2: clickedColor = styles['flip-path']
-    }
-    const clickedStyle = path === readPath ? clickedColor : ''
-    return `${styles['menu-button']} ${clickedStyle} `
-  }
-  
-  const resetPaths = () => {
-    setReadPath("")
-    setPagePath("")
-  }
+function buttonStyle (clicked: boolean): string {
+  const clickedStyle = clicked ? styles['read-path'] : ''
+  return `${styles['menu-button']} ${clickedStyle}`
+}
+
+export default function Frame() {
+  const { 
+    diff, 
+    menu, 
+    readPath, 
+    setReadPath, 
+  } = useCommits();
   
   const selectPath = (path: string) => {
-    if (clickCount.current === 0 || path !== readPath) {
-      setReadPath(path)
-      clickCount.current = 1
-      return
-    }
-    if (clickCount.current === 1) {
-      setPagePath(path)
-      clickCount.current = 2
-      return
-    }
-    if (clickCount.current === 2) {
-      resetPaths()
-      clickCount.current = 0
-    }
+    setReadPath(path !== readPath ? path : "")
   }
 
   return (
@@ -171,7 +137,7 @@ export default function Frame() {
         <div className={styles.menu}>
           {menu.map((path, pos) => (
             <button key={path}
-              className={buttonStyle(path)}
+              className={buttonStyle(path === readPath)}
               onClick={() => selectPath(path)} 
             >
               {path}
@@ -197,7 +163,9 @@ export default function Frame() {
                 </tr>
               ) : (
                 <tr className={rowStyle(line)}>
-                  <span className={styles.code}>{line}</span>
+                  <td>
+                    <span className={styles.code}>{line}</span>
+                  </td>
                 </tr>
               )
             })}
