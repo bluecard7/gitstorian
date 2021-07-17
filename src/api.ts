@@ -78,7 +78,7 @@ async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
 }
 
 async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
-  const range = hash ? `${hash} HEAD` : "HEAD";
+  const range = hash ? `${hash}..` : "HEAD";
   const fileOpt = path ? `-- ${path}` : ""
   // Need to use head instead of -n in this case
   // because reverse is applied after cutting

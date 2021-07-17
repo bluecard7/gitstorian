@@ -1,9 +1,9 @@
 import Head from 'next/head'
 import Image from 'next/image'
 import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
-import { of, fromEvent } from 'rxjs'
+import { fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
-import styles from '../styles/Home.module.css'
+import styles from '../styles/Frame.module.css'
 
 const baseURL = 'http://localhost:8081'
 const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
@@ -103,6 +103,19 @@ function useCommits() {
 //   - resolve truncated paths
 // todo: copy filesystem menu view from gitlab?
 // todo: feel cramped in diff view, have to pad outside of this component?
+function rowStyle (line: string): string {
+  switch (line[0]) {
+    case "+": return styles['row-add']
+    case "-": return styles['row-remove']
+  } 
+  return ""
+}
+
+function buttonStyle (clicked: boolean): string {
+  const clickedStyle = clicked ? styles['read-path'] : ''
+  return `${styles['menu-button']} ${clickedStyle}`
+}
+
 export default function Frame() {
   const { 
     diff, 
@@ -110,36 +123,9 @@ export default function Frame() {
     readPath, 
     setReadPath, 
   } = useCommits();
-  const clickCount = useRef(0)
-  
-  const rowStyle = (line: string): string => {
-    switch (line[0]) {
-      case "+": return styles['row-add']
-      case "-": return styles['row-remove']
-    } 
-    return ""
-  }
-
-  const buttonStyle = (path: string): string => {
-    let clickedColor;
-    switch(clickCount.current) {
-      case 1: clickedColor = styles['read-path']; break
-      case 2: clickedColor = styles['flip-path']
-    }
-    const clickedStyle = path === readPath ? clickedColor : ''
-    return `${styles['menu-button']} ${clickedStyle} `
-  }
   
   const selectPath = (path: string) => {
-    if (clickCount.current === 0 || path !== readPath) {
-      setReadPath(path)
-      clickCount.current = 1
-      return
-    }
-    if (clickCount.current === 1) {
-      setReadPath("")
-      clickCount.current = 0
-    }
+    setReadPath(path !== readPath ? path : "")
   }
 
   return (
@@ -151,7 +137,7 @@ export default function Frame() {
         <div className={styles.menu}>
           {menu.map((path, pos) => (
             <button key={path}
-              className={buttonStyle(path)}
+              className={buttonStyle(path === readPath)}
               onClick={() => selectPath(path)} 
             >
               {path}
@@ -177,7 +163,9 @@ export default function Frame() {
                 </tr>
               ) : (
                 <tr className={rowStyle(line)}>
-                  <span className={styles.code}>{line}</span>
+                  <td>
+                    <span className={styles.code}>{line}</span>
+                  </td>
                 </tr>
               )
             })}
