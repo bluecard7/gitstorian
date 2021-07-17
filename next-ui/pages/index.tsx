@@ -6,13 +6,14 @@ import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Home.module.css'
 
 const baseURL = 'http://localhost:8081'
-const observeKeydown = () => fromEvent(document, 'keydown')
+const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
+const keydownObserver = typeof window !== 'undefined' && fromEvent(document, 'keydown')
   .pipe(
     throttleTime(200),
     map(e => e.code),
     filter(Boolean),
   )
-const urlify = (parts: string[]): string => parts.filter(Boolean).join('/')
+
 const fetchData = (pieces: string[]): Promise<Response> => {
   console.log(urlify(pieces))
   return fetch(urlify(pieces))
@@ -37,116 +38,63 @@ async function loadDiff(
   return res.json()
 }
 
-interface Traversal {
-  path: string;
-  hashes: string[];
-  pos: number;
-}
-
 function useCommits() {
-  const traversals = useRef<Traversal[]>([])
-
   const hashes = useRef([])
   const [hashPos, setHashPos] = useState(-1)
-  // ref to make sure keydown subscription has access to most recent value
-  const hashPosRef = useRef(-1)
-
-  const menu = useRef([])
+  const [menu, setMenu] = useState([])
   const [diff, setDiff] = useState([])
-  
-  const pagePath = useRef("")
-  const setPagePath = (path: string) => {
-    pagePath.current = path;
-  }
-
   const [readPath, setReadPath] = useState("")
   
-  const updateHashPos = (pos: number) => {
-    hashPosRef.current = pos
-    setHashPos(pos)
-  }
   const append = (page: string[]) => {
     hashes.current = hashes.current.concat(page)  
-    updateHashPos(hashPosRef.current + 1)
+    setHashPos(hashPos + 1)
   }
   const prepend = (page: string[]) => {
     hashes.current = page.concat(hashes.current)
-    updateHashPos(page.length - 1)
+    setHashPos(page.length - 1)
   }
   const flip = (order: string): Promise<string[]> => {
-    const hash = hashes.current[hashPosRef.current]
+    const hash = hashes.current[hashPos]
     const insert = order === "next" ? append : prepend
-    return loadPage(order, hash, pagePath.current).then(insert)
+    return loadPage(order, hash).then(insert)
   }
+
+  useEffect(() => { flip("next") }, [])
  
   useEffect(() => {
-    flip("next")
-    const subscription = observeKeydown().subscribe(code => {
-      const currHashPos = hashPosRef.current;
+    const subscription = keydownObserver.subscribe(code => {
       if (code === 'ArrowLeft') {
-        if (currHashPos === 0) {
-          // todo: wrong b/c if no more content, this 
-          // will do a non-specific page.
-          // (b/c we just opted to pass prevPage({}) in that
-          // case.)
+        if (hashPos === 0) {
           flip("prev")
         } else {
-          updateHashPos(currHashPos - 1) 
+          setHashPos(hashPos - 1) 
         }
       }
       if (code === 'ArrowRight') {
-        if (currHashPos === hashes.current.length - 1) {
+        if (hashPos === hashes.current.length - 1) {
           flip("next")
         } else {
-          updateHashPos(currHashPos + 1) 
+          setHashPos(hashPos + 1) 
         }
       }
-      !pagePath.current && setReadPath("")
+      setReadPath("")
     });
-    return subscription?.unsubscribe
-  }, [])
+    return () => subscription.unsubscribe()
+  }, [hashPos])
 
   useEffect(() => {
     const hash = hashes.current[hashPos]
     hash && loadDiff(hash, readPath).then(res => {
-        menu.current = res.pathMenu || []
-        setDiff(res.diff)
-        console.table({hash, menu})
-        console.log(...traversals.current)
+        setMenu(res.pathMenu || [])
+        setDiff(res.diff || [])
     })
   }, [hashPos, readPath])
 
-  const addTraversal = (path: string) => {
-    console.log("adding traversal")
-    traversals.current.push({ 
-      path: pagePath.current,
-      hashes: [...hashes.current], 
-      pos: hashPos, 
-    })
-    const cut = hashes.current.length
-    setPagePath(path)
-    flip("next").then(() => {
-      hashes.current = [...hashes.current.slice(cut)]
-      updateHashPos(0)
-    })
-  }
-
-  const removeTraversal = () => {
-    const { path, pos, hashes: h } = traversals.current.pop()
-    setReadPath(path)
-    setPagePath(path)
-    hashes.current = h
-    updateHashPos(pos)
-  }
-
-  console.log({hashes: hashes.current})
   return {
-    menu: menu.current,
+    menu,
     diff,
     readPath,
     setReadPath,
-    addTraversal,
-    removeTraversal,
   }
 }
 
@@ -161,8 +109,6 @@ export default function Frame() {
     menu, 
     readPath, 
     setReadPath, 
-    addTraversal,
-    removeTraversal,
   } = useCommits();
   const clickCount = useRef(0)
   
@@ -191,12 +137,7 @@ export default function Frame() {
       return
     }
     if (clickCount.current === 1) {
-      addTraversal(path)
-      clickCount.current = 2
-      return
-    }
-    if (clickCount.current === 2) {
-      removeTraversal()
+      setReadPath("")
       clickCount.current = 0
     }
   }
