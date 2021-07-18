@@ -14,7 +14,7 @@ export interface DiffOptions {
 }
 
 async function run(cmd: string): Promise<string> {
-  console.log("[RUNNING]:", cmd);
+  console.log("[EXEC]", cmd);
   const p = Deno.run({
     cmd: ["sh"],
     stdin: "piped",
@@ -27,22 +27,45 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
-export async function read({ hash, path }: DiffOptions): Promise<string[]> {
-  const defaults = `--oneline ${path ? "" : "--stat"}`;
-  const fileOpt = path ? `-- ${path}` : "";
+// Resolves paths when a file gets moved in git
+// ex. a/{b => c}/d -> a/c/d
+function resolvePath(path: string = ""): string {
+  return path.split("/")
+    .reduce((acc, part) => {
+      if (part.startsWith("{")) {
+        part = part.slice(1, -1).split("=>")[1];
+      }
+      acc.push(part.trim());
+      return acc;
+    }, <string[]> [])
+    .join("/");
+}
+
+// reads diff
+export async function readDiff({ hash, path }: DiffOptions): Promise<string[]> {
+  const resolvedPath = resolvePath(path);
+  const defaults = `--oneline ${resolvedPath ? "" : "--stat=100"}`;
+  const fileOpt = resolvedPath ? `-- ${resolvedPath}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
   return lines(await run(cmd));
 }
 
+// reads file content, needs both hash + path
+// todo: how handle really large files, like package-lock.json? Just
+// not allow those?
+// todo: handle non-existent paths?
+export function readFile({ hash, path }: DiffOptions): Promise<string> {
+  return run(`git show ${hash}:${resolvePath(path)}`);
+}
+
 export function bookmark(page: string[]) {
-  console.log("[PERSISTING]:", page);
+  console.log("[SAVE]", page);
   Deno.writeFileSync(storeName, encoder.encode(page.join("\n")), {
     create: true,
   });
 }
 
-// flipping pages of commits mixes with the concept of reading
-// a commit
+// flipping pages of commits mixes with the concept of reading a commit
 export function flip(
   order: string = "",
   opts: DiffOptions = {},
@@ -63,14 +86,8 @@ async function initialPage(): Promise<string[]> {
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
-  // todo: tests didn't catch that I needed the -- in the command
-  const fileOpt = path ? `-- ${path}` : ""
+  const fileOpt = path ? `-- ${path}` : "";
   const cmd = `git rev-list ${hash || "HEAD"} ${fileOpt} -n${PAGE_SIZE + 1}`;
-  // invariant is the commit from which the prev page is
-  // grabbed from is included in the output. But this isn't
-  // true when going from the first commit to the last page -
-  // the first commit isn't after the last commit in git. So,
-  // need to remove the first commit of the last page in that case.
   const step = hash ? [0, -1] : [1];
   const page = lines(await run(cmd)).reverse().slice(...step);
   // todo: recursive if page length always 0
@@ -79,7 +96,7 @@ async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
 
 async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
   const range = hash ? `${hash}..` : "HEAD";
-  const fileOpt = path ? `-- ${path}` : ""
+  const fileOpt = path ? `-- ${path}` : "";
   // Need to use head instead of -n in this case
   // because reverse is applied after cutting
   const cmd = `git rev-list --reverse ${range} ${fileOpt}`;

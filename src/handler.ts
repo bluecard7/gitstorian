@@ -2,7 +2,7 @@ import {
   Response,
   ServerRequest,
 } from "https://deno.land/std@0.97.0/http/server.ts";
-import { bookmark, DiffOptions, flip, read } from "./api.ts";
+import { bookmark, DiffOptions, flip, readDiff, readFile } from "./api.ts";
 
 function match(
   { method, url }: ServerRequest,
@@ -13,22 +13,23 @@ function match(
 }
 
 interface Handlers {
-  read: (opts: DiffOptions) => Promise<string[]>;
+  readDiff: (opts: DiffOptions) => Promise<string[]>;
+  readFile: (opts: DiffOptions) => Promise<string>;
   flip: (order: string, opts: DiffOptions) => Promise<string[]>;
   bookmark: (page: string[]) => void;
 }
 
 function formatPathMenu(statDiff: string[]): string[] {
-  return statDiff.map(line => line.split('|'))
+  return statDiff.map((line) => line.split("|"))
     .reduce((acc, parts) => {
-      parts.length === 2 && acc.push(parts[0].trim())
-      return acc
-    }, [])
+      parts.length === 2 && acc.push(parts[0].trim());
+      return acc;
+    }, []);
 }
 
 export async function handle(
   req: ServerRequest,
-  handlers: Handlers = { read, flip, bookmark },
+  handlers: Handlers = { readDiff, readFile, flip, bookmark },
 ): Promise<Response> {
   // to deal with CORS preflight
   if (match(req, "OPTIONS", "")) {
@@ -42,30 +43,44 @@ export async function handle(
       }),
     };
   }
-  const { read, flip, bookmark } = handlers;
+  const { readDiff, readFile, flip, bookmark } = handlers;
   if (match(req, "GET", "/diffs")) {
     const path = req.url.split("/").slice(2);
     const [hash, ...file] = path;
     if (!hash) {
-      return { status: 400, body: "can't read without a hash" };
+      return { status: 400, body: "can't diff without a hash" };
     }
-    const statDiff = await read({ hash })
-    return { 
-      status: 200, 
+    const statDiff = await readDiff({ hash });
+    let diff = statDiff;
+    if (file.length) {
+      diff = await readDiff({
+        hash,
+        path: decodeURIComponent(file.join("/")),
+      });
+    }
+    return {
+      status: 200,
       body: JSON.stringify({
         pathMenu: formatPathMenu(statDiff),
-        diff: file.length 
-          ? (await read({ hash, path: file.join("/") }))
-          : statDiff,
-      })
+        diff,
+      }),
     };
+  }
+  if (match(req, "GET", "/raw")) {
+    const path = req.url.split("/").slice(2);
+    const [hash, ...file] = path;
+    const decodedPath = decodeURIComponent(file.join("/"));
+    if (!hash || !decodedPath) {
+      return { status: 400, body: "can't read file without a hash or file" };
+    }
+    return { status: 200, body: await readFile({ hash, path: decodedPath }) };
   }
   if (match(req, "GET", "/commits")) {
     const path = req.url.split("/").slice(2);
-    // todo: allow filename to be provided
     const [order, hash, ...file] = path;
+    const decodedPath = decodeURIComponent(file.join("/"));
     const body = JSON.stringify(
-      await flip(order, { hash, path: file.join("/") }),
+      await flip(order, { hash, path: decodedPath }),
     );
     return { status: 200, body };
   }

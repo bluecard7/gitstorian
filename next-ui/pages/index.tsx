@@ -27,7 +27,7 @@ async function loadPage(
   path: string = "",
 ): Promise<string[]> {
   const res = await fetchData([baseURL, 'commits', order, hash, path])
-  return res.ok ? (await res.json()) : []
+  return res.ok ? res.json() : []
 }
 
 async function loadDiff(
@@ -38,12 +38,21 @@ async function loadDiff(
   return res.json()
 }
 
+async function loadFileRaw(
+  hash: string = "", 
+  path: string = ""
+): Promise<string> {
+  const res = await fetchData([baseURL, "raw", hash, path])
+  return res.text()
+}
+
 function useCommits() {
   const hashes = useRef([])
   const [hashPos, setHashPos] = useState(-1)
   const [menu, setMenu] = useState([])
   const [diff, setDiff] = useState([])
   const [readPath, setReadPath] = useState("")
+  const [bookmarkHash, setBookmarkHash] = useState("")
   
   const append = (page: string[]) => {
     hashes.current = hashes.current.concat(page)  
@@ -53,13 +62,25 @@ function useCommits() {
     hashes.current = page.concat(hashes.current)
     setHashPos(page.length - 1)
   }
-  const flip = (order: string): Promise<string[]> => {
+  const flip = (order: string = ""): Promise<string[]> => {
     const hash = hashes.current[hashPos]
-    const insert = order === "next" ? append : prepend
+    const insert = order === "prev" ? prepend : append
     return loadPage(order, hash).then(insert)
   }
+  const bookmark = () => {
+    const page = hashes.current.slice(hashPos)
+    // will always return true for now, even if it failed
+    fetch(urlify([baseURL, 'bookmark']), {
+      method: 'POST',
+      body: JSON.stringify(page),
+    })
+    .then(() => setBookmarkHash(page[0]))
+    .catch(() => {})
+  }
 
-  useEffect(() => { flip("next") }, [])
+  useEffect(() => { 
+    flip().then(() => setBookmarkHash(hashes.current[0]))
+  }, [])
  
   useEffect(() => {
     const subscription = keydownObserver.subscribe(code => {
@@ -69,6 +90,7 @@ function useCommits() {
         } else {
           setHashPos(hashPos - 1) 
         }
+        setReadPath("")
       }
       if (code === 'ArrowRight') {
         if (hashPos === hashes.current.length - 1) {
@@ -76,8 +98,8 @@ function useCommits() {
         } else {
           setHashPos(hashPos + 1) 
         }
+        setReadPath("")
       }
-      setReadPath("")
     });
     return () => subscription.unsubscribe()
   }, [hashPos])
@@ -95,14 +117,12 @@ function useCommits() {
     diff,
     readPath,
     setReadPath,
+    bookmarked: bookmarkHash === hashes.current[hashPos],
+    bookmark,
+    getRaw: () => loadFileRaw(hashes.current[hashPos], readPath),
   }
 }
 
-// todo: resolve edited paths in the backend
-//   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
-//   - resolve truncated paths
-// todo: copy filesystem menu view from gitlab?
-// todo: feel cramped in diff view, have to pad outside of this component?
 function rowStyle (line: string): string {
   switch (line[0]) {
     case "+": return styles['row-add']
@@ -121,11 +141,17 @@ export default function Frame() {
     diff, 
     menu, 
     readPath, 
-    setReadPath, 
+    setReadPath,
+    bookmarked,
+    bookmark,
+    getRaw,
   } = useCommits();
   
   const selectPath = (path: string) => {
     setReadPath(path !== readPath ? path : "")
+  }
+  const copyRaw = async () => {
+    navigator.clipboard.writeText(await getRaw())
   }
 
   return (
@@ -135,6 +161,20 @@ export default function Frame() {
       </Head>
       <main className={styles.main}>
         <div className={styles.menu}>
+          <button 
+            className={styles['bookmark-button']}
+            onClick={bookmark}
+            disabled={bookmarked}
+          >
+            {bookmarked ? 'Bookmarked' : 'Bookmark this commit' }
+          </button>
+          <button 
+            className={styles['copy-button']} 
+            onClick={copyRaw}
+            disabled={!readPath}
+          >
+            Copy content
+          </button>
           {menu.map((path, pos) => (
             <button key={path}
               className={buttonStyle(path === readPath)}

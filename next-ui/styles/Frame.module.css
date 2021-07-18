@@ -17,12 +17,41 @@
   display: grid;
   grid-auto-rows: minmax(50px, 70px);
 }
+.menu-button:hover, .bookmark-button:hover, .copy-button:hover {
+  cursor: pointer;
+}
 .menu-button {
   border: 1px solid;
   background: white;
   margin: 5px;
   padding: 10px;
 }
+.bookmark-button {
+  border: 1px solid #5366AD;
+  border-radius: 20px;
+  color: #5366AD;
+  background: white;
+  margin: 5px;
+  padding: 10px;
+}
+.bookmark-button:disabled {
+  cursor: not-allowed;
+  border-color: grey;
+  color: grey;
+}
+.copy-button {
+  border: 1px solid #5366AD;
+  border-radius: 20px;
+  color: #5366AD;
+  background: white;
+  margin: 5px;
+  padding: 10px;
+}
+.copy-button:disabled {
+  opacity: 0;
+  cursor: auto;
+}
+
 .read-path {
   background: #b3cde0;
 }
