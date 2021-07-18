@@ -27,7 +27,7 @@ async function loadPage(
   path: string = "",
 ): Promise<string[]> {
   const res = await fetchData([baseURL, 'commits', order, hash, path])
-  return res.ok ? (await res.json()) : []
+  return res.ok ? res.json() : []
 }
 
 async function loadDiff(
@@ -36,6 +36,14 @@ async function loadDiff(
 ): Promise<{ diff: string[], pathMenu: string[]}> {
   const res = await fetchData([baseURL,'diffs', hash, path])
   return res.json()
+}
+
+async function loadFileRaw(
+  hash: string = "", 
+  path: string = ""
+): Promise<string> {
+  const res = await fetchData([baseURL, "raw", hash, path])
+  return res.text()
 }
 
 function useCommits() {
@@ -111,6 +119,7 @@ function useCommits() {
     setReadPath,
     bookmarked: bookmarkHash === hashes.current[hashPos],
     bookmark,
+    getRaw: () => loadFileRaw(hashes.current[hashPos], readPath),
   }
 }
 
@@ -136,10 +145,15 @@ export default function Frame() {
     setReadPath,
     bookmarked,
     bookmark,
+    getRaw,
   } = useCommits();
   
   const selectPath = (path: string) => {
     setReadPath(path !== readPath ? path : "")
+  }
+  const copyRaw = async () => {
+    const content = await getRaw()
+    navigator.clipboard.writeText(content)
   }
 
   return (
@@ -155,6 +169,13 @@ export default function Frame() {
             disabled={bookmarked}
           >
             {bookmarked ? 'Bookmarked' : 'Bookmark this commit' }
+          </button>
+          <button 
+            className={styles['bookmark-button']} 
+            onClick={copyRaw}
+            disabled={!readPath}
+          >
+            {readPath ? "Copy raw content" : "Select a file"}
           </button>
           {menu.map((path, pos) => (
             <button key={path}
