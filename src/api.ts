@@ -27,22 +27,24 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
-function resolvePath(path: string): string {
+// Resolves paths when a file gets moved in git
+// ex. a/{b => c}/d -> a/c/d
+function resolvePath(path: string = ""): string {
   return path.split("/")
     .reduce((acc, part) => {
-      if(part.startsWith("{")) {
-        part = part.slice(1,-1) // rids braces
-          .split("=>")[1].trim()
+      if (part.startsWith("{")) {
+        part = part.slice(1, -1).split("=>")[1];
       }
-      acc.push(part)
-      return acc
-    }, [])
-    .join("/")
+      acc.push(part.trim());
+      return acc;
+    }, <string[]>[])
+    .join("/");
 }
 
 export async function read({ hash, path }: DiffOptions): Promise<string[]> {
-  const defaults = `--oneline ${path ? "" : "--stat=100"}`;
-  const fileOpt = path ? `-- ${path}` : "";
+  const resolvedPath = resolvePath(path)
+  const defaults = `--oneline ${resolvedPath ? "" : "--stat=100"}`;
+  const fileOpt = resolvedPath ? `-- ${resolvedPath}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
   return lines(await run(cmd));
 }
@@ -75,7 +77,7 @@ async function initialPage(): Promise<string[]> {
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
-  const fileOpt = path ? `-- ${path}` : ""
+  const fileOpt = path ? `-- ${path}` : "";
   const cmd = `git rev-list ${hash || "HEAD"} ${fileOpt} -n${PAGE_SIZE + 1}`;
   const step = hash ? [0, -1] : [1];
   const page = lines(await run(cmd)).reverse().slice(...step);
@@ -85,7 +87,7 @@ async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
 
 async function nextPage({ hash, path }: DiffOptions): Promise<string[]> {
   const range = hash ? `${hash}..` : "HEAD";
-  const fileOpt = path ? `-- ${path}` : ""
+  const fileOpt = path ? `-- ${path}` : "";
   // Need to use head instead of -n in this case
   // because reverse is applied after cutting
   const cmd = `git rev-list --reverse ${range} ${fileOpt}`;

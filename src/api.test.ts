@@ -57,7 +57,7 @@ Deno.test("reading hash generates stat diff", async () => {
   assert(statDiffs.every(
     (lines) =>
       lines.slice(1, -1).every(
-        (line) => line.split('|').length === 2
+        (line) => line.split("|").length === 2,
       ),
   ));
 });

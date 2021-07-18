@@ -91,14 +91,18 @@ Deno.test("/diffs/<hash>/<file>", async () => {
   // need to destructure to rm array details
   // like length, Symbol.iterator, etc
   assertObjectMatch(
-    { arg: [
-      ...mockRead.calls[0],
-      ...mockRead.calls[1],
-    ]},
-    { arg: [
-      { hash: "deadbeef" },
-      { hash: "deadbeef", path: "path/to/file" },
-    ] },
+    {
+      arg: [
+        ...mockRead.calls[0],
+        ...mockRead.calls[1],
+      ],
+    },
+    {
+      arg: [
+        { hash: "deadbeef" },
+        { hash: "deadbeef", path: "path/to/file" },
+      ],
+    },
   );
 });
 

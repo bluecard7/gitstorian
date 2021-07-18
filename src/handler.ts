@@ -19,11 +19,11 @@ interface Handlers {
 }
 
 function formatPathMenu(statDiff: string[]): string[] {
-  return statDiff.map(line => line.split('|'))
+  return statDiff.map((line) => line.split("|"))
     .reduce((acc, parts) => {
-      parts.length === 2 && acc.push(parts[0].trim())
-      return acc
-    }, [])
+      parts.length === 2 && acc.push(parts[0].trim());
+      return acc;
+    }, []);
 }
 
 export async function handle(
@@ -49,15 +49,20 @@ export async function handle(
     if (!hash) {
       return { status: 400, body: "can't read without a hash" };
     }
-    const statDiff = await read({ hash })
-    return { 
-      status: 200, 
+    const statDiff = await read({ hash });
+    let diff = statDiff;
+    if (file.length) {
+      diff = await read({ 
+        hash, 
+        path: decodeURIComponent(file.join("/")) 
+      })
+    }
+    return {
+      status: 200,
       body: JSON.stringify({
         pathMenu: formatPathMenu(statDiff),
-        diff: file.length 
-          ? (await read({ hash, path: file.join("/") }))
-          : statDiff,
-      })
+        diff,
+      }),
     };
   }
   if (match(req, "GET", "/commits")) {
