@@ -123,7 +123,6 @@ function useCommits() {
   }
 }
 
-// todo: copy file contents at that version
 function rowStyle (line: string): string {
   switch (line[0]) {
     case "+": return styles['row-add']
@@ -152,8 +151,7 @@ export default function Frame() {
     setReadPath(path !== readPath ? path : "")
   }
   const copyRaw = async () => {
-    const content = await getRaw()
-    navigator.clipboard.writeText(content)
+    navigator.clipboard.writeText(await getRaw())
   }
 
   return (
@@ -171,11 +169,11 @@ export default function Frame() {
             {bookmarked ? 'Bookmarked' : 'Bookmark this commit' }
           </button>
           <button 
-            className={styles['bookmark-button']} 
+            className={styles['copy-button']} 
             onClick={copyRaw}
             disabled={!readPath}
           >
-            {readPath ? "Copy raw content" : "Select a file"}
+            Copy content
           </button>
           {menu.map((path, pos) => (
             <button key={path}
