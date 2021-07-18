@@ -54,7 +54,7 @@ function useCommits() {
     hashes.current = page.concat(hashes.current)
     setHashPos(page.length - 1)
   }
-  const flip = (order: string): Promise<string[]> => {
+  const flip = (order: string = ""): Promise<string[]> => {
     const hash = hashes.current[hashPos]
     const insert = order === "prev" ? prepend : append
     return loadPage(order, hash).then(insert)
@@ -71,7 +71,7 @@ function useCommits() {
   }
 
   useEffect(() => { 
-    loadPage().then(page => setBookmarkHash(page[0]))
+    flip().then(() => setBookmarkHash(hashes.current[0]))
   }, [])
  
   useEffect(() => {
@@ -114,10 +114,6 @@ function useCommits() {
   }
 }
 
-// todo: resolve edited paths in the backend
-//   - ex: perf/{ => map}/perf.js -> perf/map/perf.js in response
-//   - resolve truncated paths
-// todo: increase --stat=<width> to get longer paths
 // todo: copy file contents at that version
 function rowStyle (line: string): string {
   switch (line[0]) {

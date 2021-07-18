@@ -14,7 +14,7 @@ export interface DiffOptions {
 }
 
 async function run(cmd: string): Promise<string> {
-  console.log("[RUNNING]:", cmd);
+  console.log("[EXEC]", cmd);
   const p = Deno.run({
     cmd: ["sh"],
     stdin: "piped",
@@ -27,22 +27,34 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
+function resolvePath(path: string): string {
+  return path.split("/")
+    .reduce((acc, part) => {
+      if(part.startsWith("{")) {
+        part = part.slice(1,-1) // rids braces
+          .split("=>")[1].trim()
+      }
+      acc.push(part)
+      return acc
+    }, [])
+    .join("/")
+}
+
 export async function read({ hash, path }: DiffOptions): Promise<string[]> {
-  const defaults = `--oneline ${path ? "" : "--stat"}`;
+  const defaults = `--oneline ${path ? "" : "--stat=100"}`;
   const fileOpt = path ? `-- ${path}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
   return lines(await run(cmd));
 }
 
 export function bookmark(page: string[]) {
-  console.log("[PERSISTING]:", page);
+  console.log("[SAVE]", page);
   Deno.writeFileSync(storeName, encoder.encode(page.join("\n")), {
     create: true,
   });
 }
 
-// flipping pages of commits mixes with the concept of reading
-// a commit
+// flipping pages of commits mixes with the concept of reading a commit
 export function flip(
   order: string = "",
   opts: DiffOptions = {},
@@ -55,7 +67,6 @@ export function flip(
 // initial page is the page starting from the bookmark or
 // the first page if the bookmark doesn't exist
 async function initialPage(): Promise<string[]> {
-  console.log(Deno.cwd(), existsSync(storeName))
   if (existsSync(storeName)) {
     const blob = decoder.decode(Deno.readFileSync(storeName));
     return lines(blob);
@@ -64,14 +75,8 @@ async function initialPage(): Promise<string[]> {
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
-  // todo: tests didn't catch that I needed the -- in the command
   const fileOpt = path ? `-- ${path}` : ""
   const cmd = `git rev-list ${hash || "HEAD"} ${fileOpt} -n${PAGE_SIZE + 1}`;
-  // invariant is the commit from which the prev page is
-  // grabbed from is included in the output. But this isn't
-  // true when going from the first commit to the last page -
-  // the first commit isn't after the last commit in git. So,
-  // need to remove the first commit of the last page in that case.
   const step = hash ? [0, -1] : [1];
   const page = lines(await run(cmd)).reverse().slice(...step);
   // todo: recursive if page length always 0
