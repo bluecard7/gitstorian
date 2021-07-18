@@ -37,16 +37,25 @@ function resolvePath(path: string = ""): string {
       }
       acc.push(part.trim());
       return acc;
-    }, <string[]>[])
+    }, <string[]> [])
     .join("/");
 }
 
-export async function read({ hash, path }: DiffOptions): Promise<string[]> {
-  const resolvedPath = resolvePath(path)
+// reads diff
+export async function readDiff({ hash, path }: DiffOptions): Promise<string[]> {
+  const resolvedPath = resolvePath(path);
   const defaults = `--oneline ${resolvedPath ? "" : "--stat=100"}`;
   const fileOpt = resolvedPath ? `-- ${resolvedPath}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
   return lines(await run(cmd));
+}
+
+// reads file content, needs both hash + path
+// todo: how handle really large files, like package-lock.json? Just
+// not allow those?
+// todo: handle non-existent paths?
+export function readFile({ hash, path }: DiffOptions): Promise<string> {
+  return run(`git show ${hash}:${resolvePath(path)}`);
 }
 
 export function bookmark(page: string[]) {

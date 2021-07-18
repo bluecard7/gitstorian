@@ -3,7 +3,7 @@ import {
   assertObjectMatch,
 } from "https://deno.land/std@0.97.0/testing/asserts.ts";
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
-import { bookmark, flip, read, setup } from "./api.ts";
+import { bookmark, flip, readDiff, setup } from "./api.ts";
 
 // use itself as the fixture
 assert(Deno.cwd().endsWith("ripthebuild"));
@@ -51,7 +51,7 @@ Deno.test("page 1 is next of last page", async () => {
 Deno.test("reading hash generates stat diff", async () => {
   const page = await flip("next");
   const statDiffs = await Promise.all(
-    page.map((hash) => read({ hash })),
+    page.map((hash) => readDiff({ hash })),
   );
   // shows affected paths in a commit hash
   assert(statDiffs.every(
@@ -68,7 +68,7 @@ Deno.test("reading hash w/ path generates actual diff", async () => {
   const page = await flip("next", { path });
   // just shows that a file diff is generated
   const fileDiffs = await Promise.all(
-    page.map((hash) => read({ hash, path })),
+    page.map((hash) => readDiff({ hash, path })),
   );
   assert(fileDiffs.every(
     (lines) =>

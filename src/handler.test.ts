@@ -1,5 +1,4 @@
 /* Tests handler.ts, only checks wiring from request to API/lib */
-
 import {
   assert,
   assertObjectMatch,
@@ -29,13 +28,19 @@ Deno.test("CORS", async () => {
   );
 });
 
-function mockRead() {
-  mockRead.calls.push(arguments);
+function mockReadDiff() {
+  mockReadDiff.calls.push(arguments);
   return Promise.resolve([]);
 }
-mockRead.calls = <any[]> [];
+mockReadDiff.calls = <any[]> [];
 
-function mockFlip() {
+function mockReadFile() {
+  mockReadDiff.calls.push(arguments);
+  return Promise.resolve("");
+}
+mockReadFile.calls = <any[]> [];
+
+function mockFlip()  {
   mockFlip.calls.push(arguments);
   return Promise.resolve([]);
 }
@@ -47,12 +52,13 @@ function mockBookmark() {
 mockBookmark.calls = <any[]> [];
 
 const resetCalls = () =>
-  [mockRead, mockFlip, mockBookmark].forEach((mock) => mock.calls = []);
+  [mockReadDiff, mockFlip, mockBookmark].forEach((mock) => mock.calls = []);
 const callCounts = () =>
-  [mockRead, mockFlip, mockBookmark].map(({ calls }) => calls.length);
+  [mockReadDiff, mockFlip, mockBookmark].map(({ calls }) => calls.length);
 
 const mockHandlers = {
-  read: mockRead,
+  readDiff: mockReadDiff,
+  readFile: mockReadFile,
   flip: mockFlip,
   bookmark: mockBookmark,
 };
@@ -64,7 +70,7 @@ Deno.test("/diffs", async () => {
   resetCalls();
   const res = await handle(req, mockHandlers);
   assert(res.status === 400);
-  assertObjectMatch({ msg: res.body }, { msg: "can't read without a hash" });
+  assertObjectMatch({ msg: res.body }, { msg: "can't diff without a hash" });
   assertObjectMatch({ count: callCounts() }, { count: [0, 0, 0] });
 });
 
@@ -76,7 +82,7 @@ Deno.test("/diffs/<hash>", async () => {
   const res = await handle(req, mockHandlers);
   assertObjectMatch({ count: callCounts() }, { count: [1, 0, 0] });
   assertObjectMatch(
-    { arg: [...mockRead.calls[0]] },
+    { arg: [...mockReadDiff.calls[0]] },
     { arg: [{ hash: "deadbeef" }] },
   );
 });
@@ -93,8 +99,8 @@ Deno.test("/diffs/<hash>/<file>", async () => {
   assertObjectMatch(
     {
       arg: [
-        ...mockRead.calls[0],
-        ...mockRead.calls[1],
+        ...mockReadDiff.calls[0],
+        ...mockReadDiff.calls[1],
       ],
     },
     {
