@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import Image from 'next/image'
-import { Fragment, useRef, useCallback, useEffect, useState } from 'react'
+import { Fragment, useEffect, useReducer } from 'react'
 import { fromEvent } from 'rxjs'
 import { filter, map, throttleTime } from 'rxjs/operators'
 import styles from '../styles/Frame.module.css'
@@ -14,12 +14,10 @@ const keydownObserver = typeof window !== 'undefined' && fromEvent(document, 'ke
     filter(Boolean),
   )
 
-const fetchData = (pieces: string[]): Promise<Response> => {
-  console.log(urlify(pieces))
-  return fetch(urlify(pieces))
+const fetchData = (pieces: string[]): Promise<Response> => 
+  fetch(urlify(pieces))
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
-}
 
 async function loadPage(
   order: string = "", 
@@ -38,6 +36,16 @@ async function loadDiff(
   return res.json()
 }
 
+function pushBookmark(page: string[]) {
+  // will always return true for now, even if it failed
+  fetch(urlify([baseURL, 'bookmark']), {
+    method: 'POST',
+    body: JSON.stringify(page),
+  })
+  .then(() => dispatch({ type: 'bookmark', hash: page[0] }))
+  .catch(() => {})
+}
+
 async function loadFileRaw(
   hash: string = "", 
   path: string = ""
@@ -46,79 +54,89 @@ async function loadFileRaw(
   return res.text()
 }
 
+const initialState = {
+  hashes: [],
+  hashPos: -1,
+  menu: [],
+  diff: [], // maybe this should just come as text
+  readPath: "",
+  bookmarkHash: "",
+}
+
+interface Message {
+  type: string;
+  payload: string[] | string
+}
+
+function reducer(state: typeof initialState, action: Message) {
+  const { hashes, hashPos } = state
+  const { payload } = action
+  switch(action.type) {
+    case 'prev':
+      return {
+        ...state,
+        hashes: payload?.length ? payload.concat(hashes) : hashes,
+        hashPos: payload?.length ? payload.length - 1 : hashPos - 1,
+      }
+    case 'next':
+      return {
+        ...state,
+        hashes: payload?.length ? hashes.concat(payload) : hashes,
+        hashPos: hashPos + 1,
+      }
+    case 'menu':
+      return { ...state, menu: payload || [] }
+    case 'diff':
+      return { ...state, diff: payload || [] }
+    case 'read':
+      return { ...state, readPath: payload || "" }
+    case 'bookmark':
+      return { ...state, bookmarkHash: payload || "" }
+  }
+  return state
+}
+
 function useCommits() {
-  const hashes = useRef([])
-  const [hashPos, setHashPos] = useState(-1)
-  const [menu, setMenu] = useState([])
-  const [diff, setDiff] = useState([])
-  const [readPath, setReadPath] = useState("")
-  const [bookmarkHash, setBookmarkHash] = useState("")
-  
-  const append = (page: string[]) => {
-    hashes.current = hashes.current.concat(page)  
-    setHashPos(hashPos + 1)
-  }
-  const prepend = (page: string[]) => {
-    hashes.current = page.concat(hashes.current)
-    setHashPos(page.length - 1)
-  }
-  const flip = (order: string = ""): Promise<string[]> => {
-    const hash = hashes.current[hashPos]
-    const insert = order === "prev" ? prepend : append
-    return loadPage(order, hash).then(insert)
-  }
-  const bookmark = () => {
-    const page = hashes.current.slice(hashPos)
-    // will always return true for now, even if it failed
-    fetch(urlify([baseURL, 'bookmark']), {
-      method: 'POST',
-      body: JSON.stringify(page),
-    })
-    .then(() => setBookmarkHash(page[0]))
-    .catch(() => {})
-  }
+  const [state, dispatch] = useReducer(reducer, initialState)
+  const { hashes, hashPos, readPath, menu, diff, bookmarkHash } = state;
 
   useEffect(() => { 
-    flip().then(() => setBookmarkHash(hashes.current[0]))
+    loadPage().then(page => {
+      dispatch({ type: 'next', payload: page })
+      dispatch({ type: 'bookmark', payload: page[0] })
+    })
   }, [])
  
   useEffect(() => {
     const subscription = keydownObserver.subscribe(code => {
+      if (!["ArrowLeft", "ArrowRight"].includes(code)) return
+      dispatch({ type: 'read', payload: '' })
       if (code === 'ArrowLeft') {
-        if (hashPos === 0) {
-          flip("prev")
-        } else {
-          setHashPos(hashPos - 1) 
-        }
-        setReadPath("")
-      }
-      if (code === 'ArrowRight') {
-        if (hashPos === hashes.current.length - 1) {
-          flip("next")
-        } else {
-          setHashPos(hashPos + 1) 
-        }
-        setReadPath("")
+        (hashPos === 0 ? loadPage("prev", hashes[hashPos]) : Promise.resolve([]))
+          .then(page => dispatch({ type: "prev", payload: page }))
+      } else {
+        (hashPos === hashes.length - 1 ? loadPage("next", hashes[hashPos]) : Promise.resolve([]))
+          .then(page => dispatch({ type: "next", payload: page }))
       }
     });
     return () => subscription.unsubscribe()
-  }, [hashPos])
-
+  }, [hashes, hashPos])
+  
   useEffect(() => {
-    const hash = hashes.current[hashPos]
-    hash && loadDiff(hash, readPath).then(res => {
-        setMenu(res.pathMenu || [])
-        setDiff(res.diff || [])
-    })
-  }, [hashPos, readPath])
+      const hash = hashes[hashPos]
+      hash && loadDiff(hash, readPath).then(res => {
+        dispatch({ type: 'menu', payload: res.pathMenu })
+        dispatch({ type: 'diff', payload: res.diff })
+      })
+  }, [hashes, hashPos, readPath])
 
   return {
     menu,
     diff,
     readPath,
-    setReadPath,
-    bookmarked: bookmarkHash === hashes.current[hashPos],
-    bookmark,
+    setReadPath: (path: string) => dispatch({ type: 'read', payload: path }),
+    bookmarked: bookmarkHash === hashes[hashPos],
+    bookmark: () => pushBookmark(hashes.slice(hashPos)),
     getRaw: () => loadFileRaw(hashes.current[hashPos], readPath),
   }
 }
