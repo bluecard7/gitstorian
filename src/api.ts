@@ -4,7 +4,7 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const lines = (text: string) => text.split("\n").filter(Boolean);
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 50;
 const storeName = ".ripthebuild";
 
 export interface DiffOptions {
