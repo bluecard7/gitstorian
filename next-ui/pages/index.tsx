@@ -14,13 +14,9 @@ const keydownObserver = typeof window !== "undefined" && fromEvent(document, "ke
     filter(Boolean),
   )
 
-if (
-  typeof window !== "undefined" && 
-  "serviceWorker" in navigator
-) {
+if (typeof window !== "undefined" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js")
-    .then(() => console.log("registered"), () => console.log("fail"))
   });
 }
 
@@ -29,29 +25,31 @@ const fetchData = (pieces: string[], opts: object = {}): Promise<Response> =>
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
 
-async function loadPage(
-  order: string = "", 
+function loadPage(
+  dir: string = "", 
   hash: string = "", 
   path: string = "",
 ): Promise<string[]> {
-  const res = await fetchData(["commits", order, hash, path])
-  return res.ok ? res.json() : []
+  return fetchData(["commits", dir, hash, path])
+    .then(res => res.ok ? res.json() : [])
 }
 
-async function loadDiff(
+function loadDiff(
   hash: string = "", 
   path: string = ""
-): Promise<{ diff: string[], pathMenu: string[]}> {
-  const res = await fetchData(["diffs", hash, path])
-  return res.json()
+): Promise<{ 
+  diff: string[], 
+  pathMenu: string[], 
+  order: { place: string, total: string }
+}> {
+  return fetchData(["diffs", hash, path]).then(res => res.json())
 }
 
-async function loadFileRaw(
+function loadFileRaw(
   hash: string = "", 
   path: string = ""
 ): Promise<string> {
-  const res = await fetchData(["raw", hash, path])
-  return res.text()
+  return fetchData(["raw", hash, path]).then(res => res.text())
 }
 
 function pushBookmark(hash: string): Promise<boolean> {
@@ -65,9 +63,10 @@ const initialState = {
   hashes: [],
   hashPos: -1,
   menu: [],
-  diff: [], // maybe this should just come as text
+  diff: [], // todo: maybe this should just come as text
   readPath: "",
   bookmarkHash: "",
+  order: {},
 }
 
 interface Message {
@@ -99,13 +98,23 @@ function reducer(state: typeof initialState, action: Message) {
       return { ...state, readPath: payload || "" }
     case "bookmark":
       return { ...state, bookmarkHash: payload || "" }
+    case "order":
+      return { ...state, order: payload || {} }
   }
   return state
 }
 
 function useCommits() {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const { hashes, hashPos, readPath, menu, diff, bookmarkHash } = state;
+  const { 
+    hashes, 
+    hashPos, 
+    readPath, 
+    menu, 
+    diff, 
+    order, 
+    bookmarkHash,
+  } = state;
 
   useEffect(() => { 
     loadPage().then(page => {
@@ -134,6 +143,7 @@ function useCommits() {
       hash && loadDiff(hash, readPath).then(res => {
         dispatch({ type: "menu", payload: res.pathMenu })
         dispatch({ type: "diff", payload: res.diff })
+        dispatch({ type: "order", payload: res.order })
       })
   }, [hashes, hashPos, readPath])
 
@@ -146,6 +156,7 @@ function useCommits() {
   return {
     menu,
     diff,
+    order,
     readPath,
     setReadPath: (path: string) => dispatch({ type: "read", payload: path }),
     bookmarked: bookmarkHash === hashes[hashPos],
@@ -167,10 +178,12 @@ function buttonStyle (clicked: boolean): string {
   return `${styles["menu-button"]} ${clickedStyle}`
 }
 
+// todo: clicking buttons navigate through hashes
 export default function Frame() {
   const { 
     diff, 
     menu, 
+    order,
     readPath, 
     setReadPath,
     bookmarked,
@@ -190,6 +203,11 @@ export default function Frame() {
       <Head>
         <title>ripthebuild</title>
       </Head>
+      <div className={styles['nav-button-container']}>
+        <button> {"<"} </button>
+        <p>{order.place || "???"} of {order.total || "???"}</p>
+        <button> {">"} </button>
+      </div>
       <main className={styles.main}>
         <div className={styles.menu}>
           <button 

@@ -2,7 +2,14 @@ import {
   Response,
   ServerRequest,
 } from "https://deno.land/std@0.97.0/http/server.ts";
-import { bookmark, DiffOptions, flip, readDiff, readFile } from "./api.ts";
+import {
+  bookmark,
+  DiffOptions,
+  flip,
+  order,
+  readDiff,
+  readFile,
+} from "./api.ts";
 
 function match(
   { method, url }: ServerRequest,
@@ -15,7 +22,7 @@ function match(
 interface Handlers {
   readDiff: (opts: DiffOptions) => Promise<string[]>;
   readFile: (opts: DiffOptions) => Promise<string>;
-  flip: (order: string, opts: DiffOptions) => Promise<string[]>;
+  flip: (dir: string, opts: DiffOptions) => Promise<string[]>;
   bookmark: (hash: string) => void;
 }
 
@@ -61,8 +68,10 @@ export async function handle(
     return {
       status: 200,
       body: JSON.stringify({
+        // todo: menu + order fetched in a different request?
         pathMenu: formatPathMenu(statDiff),
         diff,
+        order: await order(hash),
       }),
     };
   }
@@ -75,15 +84,15 @@ export async function handle(
     return { status: 200, body: await readFile({ hash, path }) };
   }
   if (match(req, "GET", "/commits")) {
-    const [order, hash, ...file] = req.url.split("/").slice(2);
+    const [dir, hash, ...file] = req.url.split("/").slice(2);
     const path = decodeURIComponent(file.join("/"));
     const body = JSON.stringify(
-      await flip(order, { hash, path }),
+      await flip(dir, { hash, path }),
     );
     return { status: 200, body };
   }
   if (match(req, "POST", "/bookmark")) {
-    const [hash] = req.url.split("/").slice(2)
+    const [hash] = req.url.split("/").slice(2);
     bookmark(hash);
     return { status: 200 };
   }

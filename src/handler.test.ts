@@ -125,7 +125,7 @@ Deno.test("/commits", async () => {
   );
 });
 
-Deno.test("/commits/<order>", async () => {
+Deno.test("/commits/<dir>", async () => {
   const req = new ServerRequest();
   req.url = "/commits/prev";
   req.method = "GET";
@@ -139,7 +139,7 @@ Deno.test("/commits/<order>", async () => {
 });
 
 // what happens when /commit//hash?
-Deno.test("/commits/<order>/<hash>", async () => {
+Deno.test("/commits/<dir>/<hash>", async () => {
   const req = new ServerRequest();
   req.url = "/commits/prev/deadbeef";
   req.method = "GET";
@@ -152,7 +152,7 @@ Deno.test("/commits/<order>/<hash>", async () => {
   );
 });
 
-Deno.test("/commits/<order>/<hash>/<path>", async () => {
+Deno.test("/commits/<dir>/<hash>/<path>", async () => {
   const req = new ServerRequest();
   req.url = "/commits/prev/deadbeef/path/to/a/file";
   req.method = "GET";

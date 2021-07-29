@@ -25,6 +25,14 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
+// ex. "efdgs34d" => ["43", "1332"]
+export function order(hash: string): Promise<{ place: string; total: string }> {
+  return Promise.all([
+    run(`git rev-list --count ${hash}`),
+    run("git rev-list --count HEAD"),
+  ]).then(([place, total]) => ({ place, total }));
+}
+
 // Resolves paths when a file gets moved in git
 // ex. a/{b => c}/d -> a/c/d
 function resolvePath(path: string = ""): string {
@@ -70,11 +78,14 @@ export function bookmark(hash: string) {
 }
 
 export function flip(
-  order: string = "",
+  dir: string = "",
   opts: DiffOptions = {},
 ): Promise<string[]> {
-  if (!order) return nextPage({ hash: bookmarks[getRepo()] });
-  if (order === "prev") return prevPage(opts);
+  if (!dir) {
+    const hash = bookmarks[getRepo()];
+    return nextPage({ hash }).then((page) => [hash, ...page]);
+  }
+  if (dir === "prev") return prevPage(opts);
   return nextPage(opts);
 }
 
