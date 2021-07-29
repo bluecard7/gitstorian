@@ -2,7 +2,14 @@ import {
   Response,
   ServerRequest,
 } from "https://deno.land/std@0.97.0/http/server.ts";
-import { bookmark, DiffOptions, flip, readDiff, readFile } from "./api.ts";
+import {
+  bookmark,
+  DiffOptions,
+  flip,
+  order,
+  readDiff,
+  readFile,
+} from "./api.ts";
 
 function match(
   { method, url }: ServerRequest,
@@ -15,8 +22,8 @@ function match(
 interface Handlers {
   readDiff: (opts: DiffOptions) => Promise<string[]>;
   readFile: (opts: DiffOptions) => Promise<string>;
-  flip: (order: string, opts: DiffOptions) => Promise<string[]>;
-  bookmark: (page: string[]) => void;
+  flip: (dir: string, opts: DiffOptions) => Promise<string[]>;
+  bookmark: (hash: string) => void;
 }
 
 function formatPathMenu(statDiff: string[]): string[] {
@@ -61,33 +68,32 @@ export async function handle(
     return {
       status: 200,
       body: JSON.stringify({
+        // todo: menu + order fetched in a different request?
         pathMenu: formatPathMenu(statDiff),
         diff,
+        order: await order(hash),
       }),
     };
   }
   if (match(req, "GET", "/raw")) {
-    const path = req.url.split("/").slice(2);
-    const [hash, ...file] = path;
-    const decodedPath = decodeURIComponent(file.join("/"));
-    if (!hash || !decodedPath) {
+    const [hash, ...file] = req.url.split("/").slice(2);
+    const path = decodeURIComponent(file.join("/"));
+    if (!hash || !path) {
       return { status: 400, body: "can't read file without a hash or file" };
     }
-    return { status: 200, body: await readFile({ hash, path: decodedPath }) };
+    return { status: 200, body: await readFile({ hash, path }) };
   }
   if (match(req, "GET", "/commits")) {
-    const path = req.url.split("/").slice(2);
-    const [order, hash, ...file] = path;
-    const decodedPath = decodeURIComponent(file.join("/"));
+    const [dir, hash, ...file] = req.url.split("/").slice(2);
+    const path = decodeURIComponent(file.join("/"));
     const body = JSON.stringify(
-      await flip(order, { hash, path: decodedPath }),
+      await flip(dir, { hash, path }),
     );
     return { status: 200, body };
   }
   if (match(req, "POST", "/bookmark")) {
-    const raw = await Deno.readAll(req.body);
-    const page = JSON.parse(new TextDecoder().decode(raw));
-    bookmark(page);
+    const [hash] = req.url.split("/").slice(2);
+    bookmark(hash);
     return { status: 200 };
   }
   return { status: 404, body: "unknown path" };

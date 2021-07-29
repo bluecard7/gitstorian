@@ -4,13 +4,11 @@ import { existsSync } from "https://deno.land/std/fs/mod.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const lines = (text: string) => text.split("\n").filter(Boolean);
-const PAGE_SIZE = 10;
-const storeName = ".ripthebuild";
+const PAGE_SIZE = 50;
 
 export interface DiffOptions {
   hash?: string;
-  // handling only files for now
-  path?: string;
+  path?: string; // just files
 }
 
 async function run(cmd: string): Promise<string> {
@@ -27,6 +25,14 @@ async function run(cmd: string): Promise<string> {
   return decoder.decode(out);
 }
 
+// ex. "efdgs34d" => ["43", "1332"]
+export function order(hash: string): Promise<{ place: string; total: string }> {
+  return Promise.all([
+    run(`git rev-list --count ${hash}`),
+    run("git rev-list --count HEAD"),
+  ]).then(([place, total]) => ({ place, total }));
+}
+
 // Resolves paths when a file gets moved in git
 // ex. a/{b => c}/d -> a/c/d
 function resolvePath(path: string = ""): string {
@@ -41,7 +47,6 @@ function resolvePath(path: string = ""): string {
     .join("/");
 }
 
-// reads diff
 export async function readDiff({ hash, path }: DiffOptions): Promise<string[]> {
   const resolvedPath = resolvePath(path);
   const defaults = `--oneline ${resolvedPath ? "" : "--stat=100"}`;
@@ -58,31 +63,30 @@ export function readFile({ hash, path }: DiffOptions): Promise<string> {
   return run(`git show ${hash}:${resolvePath(path)}`);
 }
 
-export function bookmark(page: string[]) {
-  console.log("[SAVE]", page);
-  Deno.writeFileSync(storeName, encoder.encode(page.join("\n")), {
-    create: true,
-  });
+let startupDir: string = "";
+const storeName = ".ripthebuild";
+let bookmarks: { [repoName: string]: string } = {};
+const getRepo = () => Deno.cwd().split("/").slice(-1)[0];
+export function bookmark(hash: string) {
+  console.log("[SAVE]", `${getRepo()}:${hash}`);
+  bookmarks = { ...bookmarks, [getRepo()]: hash };
+  Deno.writeTextFileSync(
+    `${startupDir}/${storeName}`,
+    JSON.stringify(bookmarks),
+    { create: true },
+  );
 }
 
-// flipping pages of commits mixes with the concept of reading a commit
 export function flip(
-  order: string = "",
+  dir: string = "",
   opts: DiffOptions = {},
 ): Promise<string[]> {
-  if (!order) return initialPage();
-  if (order === "prev") return prevPage(opts);
-  return nextPage(opts);
-}
-
-// initial page is the page starting from the bookmark or
-// the first page if the bookmark doesn't exist
-async function initialPage(): Promise<string[]> {
-  if (existsSync(storeName)) {
-    const blob = decoder.decode(Deno.readFileSync(storeName));
-    return lines(blob);
+  if (!dir) {
+    const hash = bookmarks[getRepo()];
+    return nextPage({ hash }).then((page) => [hash, ...page]);
   }
-  return await nextPage({});
+  if (dir === "prev") return prevPage(opts);
+  return nextPage(opts);
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {
@@ -111,6 +115,10 @@ export async function setup(repoPath: string): Promise<{
   let success = false;
   let errMsg = "";
   try {
+    startupDir = Deno.cwd();
+    if (existsSync(storeName)) {
+      bookmarks = JSON.parse(Deno.readTextFileSync(storeName));
+    }
     Deno.chdir(repoPath);
     // check if its a git repo
     if (!existsSync(".git")) {
