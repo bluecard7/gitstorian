@@ -153,7 +153,7 @@ function useCommits() {
     setReadPath: (path: string) => dispatch({ type: "read", payload: path }),
     bookmarked: bookmarkHash === hashes[hashPos],
     bookmark,
-    getRaw: () => loadFileRaw(hashes.current[hashPos], readPath),
+    getRaw: () => loadFileRaw(hashes[hashPos], readPath),
   }
 }
 

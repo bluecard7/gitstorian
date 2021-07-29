@@ -40,7 +40,7 @@ function mockReadFile() {
 }
 mockReadFile.calls = <any[]> [];
 
-function mockFlip()  {
+function mockFlip() {
   mockFlip.calls.push(arguments);
   return Promise.resolve([]);
 }
