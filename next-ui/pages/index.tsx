@@ -54,12 +54,9 @@ async function loadFileRaw(
   return res.text()
 }
 
-function pushBookmark(page: string[]): Promise<boolean> {
+function pushBookmark(hash: string): Promise<boolean> {
   // will always return true for now, even if it failed
-  return fetchData(["bookmark"], {
-    method: "POST",
-    body: JSON.stringify(page),
-  })
+  return fetchData(["bookmark", hash], { method: "POST" })
   .then(() => true)
   .catch(() => false)
 }
@@ -141,9 +138,9 @@ function useCommits() {
   }, [hashes, hashPos, readPath])
 
   function bookmark() {
-    const page = hashes.slice(hashPos)
-    pushBookmark(page)
-      .then(() => dispatch({ type: "bookmark", payload: page[0] }))
+    const hash = hashes[hashPos]
+    pushBookmark(hash)
+      .then(() => dispatch({ type: "bookmark", payload: hash }))
   }
 
   return {
