@@ -25,39 +25,33 @@ const fetchData = (pieces: string[], opts: object = {}): Promise<Response> =>
     .then(data => data)
     .catch(err => ({ text: () => err.message }))
 
-function loadPage(
+const loadPage = (
   dir: string = "", 
   hash: string = "", 
   path: string = "",
-): Promise<string[]> {
-  return fetchData(["commits", dir, hash, path])
+): Promise<string[]> => 
+  fetchData(["commits", dir, hash, path])
     .then(res => res.ok ? res.json() : [])
-}
 
-function loadDiff(
+const loadDiff = (
   hash: string = "", 
-  path: string = ""
+  path: string = "",
 ): Promise<{ 
   diff: string[], 
   pathMenu: string[], 
   order: { place: string, total: string }
-}> {
-  return fetchData(["diffs", hash, path]).then(res => res.json())
-}
+}> => fetchData(["diffs", hash, path]).then(res => res.json())
 
-function loadFileRaw(
+const loadFileRaw = (
   hash: string = "", 
-  path: string = ""
-): Promise<string> {
-  return fetchData(["raw", hash, path]).then(res => res.text())
-}
+  path: string = "",
+): Promise<string> => fetchData(["raw", hash, path]).then(res => res.text())
 
-function pushBookmark(hash: string): Promise<boolean> {
+const pushBookmark = (hash: string): Promise<boolean> =>
   // will always return true for now, even if it failed
-  return fetchData(["bookmark", hash], { method: "POST" })
-  .then(() => true)
-  .catch(() => false)
-}
+  fetchData(["bookmark", hash], { method: "POST" })
+    .then(() => true)
+    .catch(() => false)
 
 const initialState = {
   hashes: [],
@@ -69,12 +63,10 @@ const initialState = {
   order: {},
 }
 
-interface Message {
-  type: string;
-  payload: string[] | string
-}
-
-function reducer(state: typeof initialState, action: Message) {
+function reducer(
+  state: typeof initialState, 
+  action: { type: string, payload: string[] | string }
+) {
   const { hashes, hashPos } = state
   const { payload } = action
   switch(action.type) {
@@ -116,6 +108,17 @@ function useCommits() {
     bookmarkHash,
   } = state;
 
+  const hash = hashes[hashPos] 
+  const hashMove = (dir: string) => {
+    const bound = dir === "prev" ? 0 : hashes.length - 1;
+    (hashPos === bound ? loadPage(dir, hash) : Promise.resolve([]))
+      .then(page => dispatch({ type: dir, payload: page }))
+    dispatch({ type: "read", payload: "" })
+  }
+  const bookmark = () => pushBookmark(hash).then(
+    () => dispatch({ type: "bookmark", payload: hash })
+  )
+
   useEffect(() => { 
     loadPage().then(page => {
       dispatch({ type: "next", payload: page })
@@ -124,44 +127,24 @@ function useCommits() {
   }, [])
  
   useEffect(() => {
-    const subscription = keydownObserver.subscribe(code => {
-      if (!["ArrowLeft", "ArrowRight"].includes(code)) return
-      dispatch({ type: "read", payload: "" })
-      if (code === "ArrowLeft") {
-        (hashPos === 0 ? loadPage("prev", hashes[hashPos]) : Promise.resolve([]))
-          .then(page => dispatch({ type: "prev", payload: page }))
-      } else {
-        (hashPos === hashes.length - 1 ? loadPage("next", hashes[hashPos]) : Promise.resolve([]))
-          .then(page => dispatch({ type: "next", payload: page }))
-      }
-    });
-    return () => subscription.unsubscribe()
-  }, [hashes, hashPos])
-  
-  useEffect(() => {
-      const hash = hashes[hashPos]
       hash && loadDiff(hash, readPath).then(res => {
         dispatch({ type: "menu", payload: res.pathMenu })
         dispatch({ type: "diff", payload: res.diff })
         dispatch({ type: "order", payload: res.order })
       })
-  }, [hashes, hashPos, readPath])
-
-  function bookmark() {
-    const hash = hashes[hashPos]
-    pushBookmark(hash)
-      .then(() => dispatch({ type: "bookmark", payload: hash }))
-  }
+  }, [hash, readPath])
 
   return {
+    hash,
     menu,
     diff,
     order,
     readPath,
-    setReadPath: (path: string) => dispatch({ type: "read", payload: path }),
-    bookmarked: bookmarkHash === hashes[hashPos],
+    bookmarkHash,
     bookmark,
-    getRaw: () => loadFileRaw(hashes[hashPos], readPath),
+    setReadPath: (path: string) => dispatch({ type: "read", payload: path }),
+    prevHash: () => hashMove("prev"),
+    nextHash: () => hashMove("next"),
   }
 }
 
@@ -180,23 +163,32 @@ function buttonStyle (clicked: boolean): string {
 
 // todo: clicking buttons navigate through hashes
 export default function Frame() {
-  const { 
+  const {
+    hash,
     diff, 
     menu, 
     order,
     readPath, 
-    setReadPath,
-    bookmarked,
+    bookmarkHash,
     bookmark,
-    getRaw,
+    setReadPath,
+    prevHash,
+    nextHash,
   } = useCommits();
+
+  useEffect(() => {
+    const subscription = keydownObserver.subscribe(code => {
+      if (!["ArrowLeft", "ArrowRight"].includes(code)) { return }
+      code === "ArrowLeft" && prevHash()
+      code === "ArrowRight" && nextHash()
+    });
+    return () => subscription.unsubscribe()
+  }, [prevHash, nextHash])
   
-  const selectPath = (path: string) => {
-    setReadPath(path !== readPath ? path : "")
-  }
-  const copyRaw = async () => {
-    navigator.clipboard.writeText(await getRaw())
-  }
+  const selectPath = (path: string) => setReadPath(path !== readPath ? path : "")
+  const copyRaw = async () => 
+    navigator.clipboard.writeText(await loadFileRaw(hash, readPath))
+  const bookmarked = bookmarkHash === hash
 
   return (
     <div className={styles.container}>
@@ -204,9 +196,9 @@ export default function Frame() {
         <title>ripthebuild</title>
       </Head>
       <div className={styles['nav-button-container']}>
-        <button> {"<"} </button>
+        <button onClick={prevHash}> {"<"} </button>
         <p>{order.place || "???"} of {order.total || "???"}</p>
-        <button> {">"} </button>
+        <button onClick={nextHash}> {">"} </button>
       </div>
       <main className={styles.main}>
         <div className={styles.menu}>
