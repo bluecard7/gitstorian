@@ -7,6 +7,10 @@ self.addEventListener("activate", event => {
   ]))
 })
 
+const cacheable = url => ["diffs", "commits", "raw"].some(
+  endpoint => url.includes(endpoint)
+)
+
 // todo: StorageEstimate API to evict entries as needed
 // todo: clear cache on load?
 self.addEventListener("fetch", event => {
@@ -15,9 +19,8 @@ self.addEventListener("fetch", event => {
     caches.open(CACHE_NAME).then(cache => 
       cache.match(request.url).then(res => {
         if (res) return res
-        console.log('not found !!!', request.url)
         return fetch(request).then(res => {
-          if (request.url.includes("localhost:8081")) 
+          if (cacheable(request.url))
             cache.put(request.url, res.clone())
           return res
         })
