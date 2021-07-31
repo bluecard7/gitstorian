@@ -50,6 +50,7 @@ export async function readDiff({ hash, path }: DiffOptions): Promise<string[]> {
   const defaults = `--oneline ${resolvedPath ? "" : "--stat=100"}`;
   const fileOpt = resolvedPath ? `-- ${resolvedPath}` : "";
   const cmd = `git show ${defaults} ${hash} ${fileOpt}`;
+  // todo: stream really long diffs - WebRTC?
   return lines(await run(cmd));
 }
 

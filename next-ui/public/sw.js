@@ -11,7 +11,7 @@ self.addEventListener("activate", event => {
 // prevents switching b/n different repos.
 // Will prevent caching initial hit for now, 
 // is there a better way?
-const cacheable = url => {
+function cacheable(url) {
   if (url.includes("diffs") || url.includes("raw")) {
     return true
   }
@@ -21,8 +21,6 @@ const cacheable = url => {
   }
 }
 
-// todo: StorageEstimate API to evict entries as needed
-// todo: clear cache on load?
 self.addEventListener("fetch", event => {
   const { request } = event
   event.respondWith(

@@ -14,11 +14,6 @@ const keydownObserver = typeof window !== "undefined" && fromEvent(document, "ke
     filter(Boolean),
   )
 
-if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-  });
-}
 
 const fetchData = (pieces: string[], opts: object = {}): Promise<Response> => 
   fetch(urlify([baseURL, ...pieces]), opts)
@@ -147,6 +142,9 @@ function useCommits() {
   )
 
   useEffect(() => { 
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js")
+    }
     loadPage().then(page => {
       dispatch({ type: "next", payload: page })
       dispatch({ type: "bookmark", payload: page[0] })
