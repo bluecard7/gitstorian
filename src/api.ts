@@ -1,8 +1,6 @@
 // Git version used here is 2.25.1
 import { existsSync } from "https://deno.land/std/fs/mod.ts";
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 const lines = (text: string) => text.split("\n").filter(Boolean);
 const PAGE_SIZE = 50;
 
@@ -18,11 +16,11 @@ async function run(cmd: string): Promise<string> {
     stdin: "piped",
     stdout: "piped",
   });
-  await p.stdin!.write(encoder.encode(cmd));
+  await p.stdin!.write(new TextEncoder().encode(cmd));
   await p.stdin!.close();
   const out = await p.output();
   p.close();
-  return decoder.decode(out);
+  return new TextDecoder().decode(out);
 }
 
 // ex. "efdgs34d" => ["43", "1332"]
@@ -83,10 +81,13 @@ export function flip(
 ): Promise<string[]> {
   if (!dir) {
     const hash = bookmarks[getRepo()];
-    return nextPage({ hash }).then((page) => [hash, ...page]);
+    return nextPage({ hash }).then(
+      (page) => hash ? [hash, ...page] : page
+    );
   }
-  if (dir === "prev") return prevPage(opts);
-  return nextPage(opts);
+  return dir === "prev" 
+    ? prevPage(opts)
+    : nextPage(opts);
 }
 
 async function prevPage({ hash, path }: DiffOptions): Promise<string[]> {

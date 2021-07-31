@@ -10,7 +10,7 @@ const urlify = (parts: string[]): string => parts.filter(Boolean).join("/")
 const keydownObserver = typeof window !== "undefined" && fromEvent(document, "keydown")
   .pipe(
     throttleTime(200),
-    map(e => e.code),
+    map((e: unknown) => (e as React.KeyboardEvent).code),
     filter(Boolean),
   )
 
@@ -23,7 +23,6 @@ if (typeof window !== "undefined" && "serviceWorker" in navigator) {
 const fetchData = (pieces: string[], opts: object = {}): Promise<Response> => 
   fetch(urlify([baseURL, ...pieces]), opts)
     .then(data => data)
-    .catch(err => ({ text: () => err.message }))
 
 const loadPage = (
   dir: string = "", 
@@ -53,7 +52,25 @@ const pushBookmark = (hash: string): Promise<boolean> =>
     .then(() => true)
     .catch(() => false)
 
-const initialState = {
+interface State {
+  hashes: string[];
+  hashPos: number;
+  menu: string[];
+  diff: string[];
+  readPath: string;
+  bookmarkHash: string;
+  order: { place?: string, total?: string };
+}
+
+interface Action {
+  type: string;
+  payload: 
+    | string[] 
+    | string
+    | State["order"]
+}
+
+const initialState: State = {
   hashes: [],
   hashPos: -1,
   menu: [],
@@ -63,35 +80,45 @@ const initialState = {
   order: {},
 }
 
-function reducer(
-  state: typeof initialState, 
-  action: { type: string, payload: string[] | string }
-) {
+function reducer(state: State, action: Action): State {
   const { hashes, hashPos } = state
   const { payload } = action
   switch(action.type) {
     case "prev":
+      const prevPage = payload as State["hashes"]
       return {
         ...state,
-        hashes: payload?.length ? payload.concat(hashes) : hashes,
-        hashPos: payload?.length ? payload.length - 1 : hashPos - 1,
+        hashes: prevPage.length
+          ? prevPage.concat(hashes) 
+          : hashes,
+        hashPos: prevPage.length 
+          ? prevPage.length - 1
+          : hashPos - 1,
       }
     case "next":
+      const nextPage = payload as State["hashes"]
       return {
         ...state,
-        hashes: payload?.length ? hashes.concat(payload) : hashes,
+        hashes: nextPage.length 
+          ? hashes.concat(nextPage) 
+          : hashes,
         hashPos: hashPos + 1,
       }
     case "menu":
-      return { ...state, menu: payload || [] }
+      const menu = payload as State["menu"]
+      return { ...state, menu }
     case "diff":
-      return { ...state, diff: payload || [] }
+      const diff = payload as State["diff"]
+      return { ...state, diff }
     case "read":
-      return { ...state, readPath: payload || "" }
+      const readPath = payload as State["readPath"]
+      return { ...state, readPath }
     case "bookmark":
-      return { ...state, bookmarkHash: payload || "" }
+      const bookmarkHash = payload as State["bookmarkHash"]
+      return { ...state, bookmarkHash }
     case "order":
-      return { ...state, order: payload || {} }
+      const order = payload as State["order"] 
+      return { ...state, order }
   }
   return state
 }
@@ -161,7 +188,6 @@ function buttonStyle (clicked: boolean): string {
   return `${styles["menu-button"]} ${clickedStyle}`
 }
 
-// todo: clicking buttons navigate through hashes
 export default function Frame() {
   const {
     hash,
@@ -177,6 +203,7 @@ export default function Frame() {
   } = useCommits();
 
   useEffect(() => {
+    if (!keydownObserver) return () => {};
     const subscription = keydownObserver.subscribe(code => {
       if (!["ArrowLeft", "ArrowRight"].includes(code)) { return }
       code === "ArrowLeft" && prevHash()

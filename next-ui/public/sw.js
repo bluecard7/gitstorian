@@ -7,9 +7,19 @@ self.addEventListener("activate", event => {
   ]))
 })
 
-const cacheable = url => ["diffs", "commits", "raw"].some(
-  endpoint => url.includes(endpoint)
-)
+// Problem: caching initial /commits hit 
+// prevents switching b/n different repos.
+// Will prevent caching initial hit for now, 
+// is there a better way?
+const cacheable = url => {
+  if (url.includes("diffs") || url.includes("raw")) {
+    return true
+  }
+  if (url.includes("commits")) {
+    const [lastPathPart] = url.split("/").slice(-1)
+    return lastPathPart !== "commits"
+  }
+}
 
 // todo: StorageEstimate API to evict entries as needed
 // todo: clear cache on load?

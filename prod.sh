@@ -2,4 +2,6 @@
 ./run-server.sh $1 &
 [ $? -eq 1 ] && exit 1
 pwd
-cd next-ui && npm run dev
+cd next-ui 
+npm run build
+npm run start

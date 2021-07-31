@@ -25,7 +25,7 @@
   margin: 5px;
   padding: 10px;
 }
-.bookmark-button {
+.bookmark-button, .copy-button {
   border: 1px solid #5366AD;
   border-radius: 20px;
   color: #5366AD;
@@ -37,14 +37,6 @@
   cursor: not-allowed;
   border-color: grey;
   color: grey;
-}
-.copy-button {
-  border: 1px solid #5366AD;
-  border-radius: 20px;
-  color: #5366AD;
-  background: white;
-  margin: 5px;
-  padding: 10px;
 }
 .copy-button:disabled {
   opacity: 0;
