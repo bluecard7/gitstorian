@@ -1,0 +1,12 @@
+Initial Idea:
+- Input: file path
+- Routes to correct language handler, finds imports and spits them out
+
+Currently using local filesystem as the "database", would like this to be 
+agnostic though. Create this in a way that this can work even in a remote
+storage (Github, Gitlab, S3, ec2 instance's filesystem, etc.) 
+
+Then that means this is an adapter you attach to a file storage.
+
+Also would like to get a window tiling/tab system in the web client to more easily
+view these files together
