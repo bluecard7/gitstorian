@@ -12,7 +12,7 @@ me seeing design changes, giving me the why's of a project's evolution.
 
 ## How does it work?
 <!--Demo vid?-->
-You run `full-run.sh` with the path to the git repository you want to view.
+You run `dev.sh` or `prod.sh` with the path to repository you want to navigate.
 This will start up a UI that should load the diff stat of the first commit
 (If you've already navigated the repository and bookmarked a commit, it should load the diff stat with that commit).
 
